@@ -1,0 +1,340 @@
+{
+  "version": 1,
+  "avatars": [
+    {
+      "id": "lico",
+      "name": {
+        "en": "Lico",
+        "zh": "Lico"
+      },
+      "flavor": "vanilla",
+      "accessory": "star",
+      "background": "night",
+      "svg": "avatars/svg/lico.svg",
+      "png": "avatars/png/lico.png"
+    },
+    {
+      "id": "berry",
+      "name": {
+        "en": "Berry",
+        "zh": "莓莓"
+      },
+      "flavor": "strawberry",
+      "accessory": "bow",
+      "background": "rose",
+      "svg": "avatars/svg/berry.svg",
+      "png": "avatars/png/berry.png"
+    },
+    {
+      "id": "sprout",
+      "name": {
+        "en": "Sprout",
+        "zh": "小芽"
+      },
+      "flavor": "matcha",
+      "accessory": "sprout",
+      "background": "mint",
+      "svg": "avatars/svg/sprout.svg",
+      "png": "avatars/png/sprout.png"
+    },
+    {
+      "id": "luna",
+      "name": {
+        "en": "Luna",
+        "zh": "月月"
+      },
+      "flavor": "taro",
+      "accessory": "moon",
+      "background": "violet",
+      "svg": "avatars/svg/luna.svg",
+      "png": "avatars/png/luna.png"
+    },
+    {
+      "id": "cherry",
+      "name": {
+        "en": "Cherry",
+        "zh": "樱桃"
+      },
+      "flavor": "caramel",
+      "accessory": "cherry",
+      "background": "cream",
+      "svg": "avatars/svg/cherry.svg",
+      "png": "avatars/png/cherry.png"
+    },
+    {
+      "id": "coco",
+      "name": {
+        "en": "Coco",
+        "zh": "可可"
+      },
+      "flavor": "chocolate",
+      "accessory": "beret",
+      "background": "lavender",
+      "svg": "avatars/svg/coco.svg",
+      "png": "avatars/png/coco.png"
+    },
+    {
+      "id": "melody",
+      "name": {
+        "en": "Melody",
+        "zh": "旋律"
+      },
+      "flavor": "mint",
+      "accessory": "headphones",
+      "background": "lilac",
+      "svg": "avatars/svg/melody.svg",
+      "png": "avatars/png/melody.png"
+    },
+    {
+      "id": "scholar",
+      "name": {
+        "en": "Scholar",
+        "zh": "学霸"
+      },
+      "flavor": "vanilla",
+      "accessory": "glasses",
+      "background": "sky",
+      "svg": "avatars/svg/scholar.svg",
+      "png": "avatars/png/scholar.png"
+    },
+    {
+      "id": "blossom",
+      "name": {
+        "en": "Blossom",
+        "zh": "花花"
+      },
+      "flavor": "peach",
+      "accessory": "flower",
+      "background": "peach",
+      "svg": "avatars/svg/blossom.svg",
+      "png": "avatars/png/blossom.png"
+    },
+    {
+      "id": "sunny",
+      "name": {
+        "en": "Sunny",
+        "zh": "暖阳"
+      },
+      "flavor": "lemon",
+      "accessory": "crown",
+      "background": "gold",
+      "svg": "avatars/svg/sunny.svg",
+      "png": "avatars/png/sunny.png"
+    },
+    {
+      "id": "orbit",
+      "name": {
+        "en": "Orbit",
+        "zh": "星轨"
+      },
+      "flavor": "blueberry",
+      "accessory": "planet",
+      "background": "indigo",
+      "svg": "avatars/svg/orbit.svg",
+      "png": "avatars/png/orbit.png"
+    },
+    {
+      "id": "mochi",
+      "name": {
+        "en": "Mochi",
+        "zh": "糯米"
+      },
+      "flavor": "strawberry",
+      "accessory": "catears",
+      "background": "lilac",
+      "svg": "avatars/svg/mochi.svg",
+      "png": "avatars/png/mochi.png"
+    }
+  ],
+  "expressions": [
+    {
+      "id": "neutral",
+      "name": {
+        "en": "Smile",
+        "zh": "微笑"
+      },
+      "svg": "expressions/svg/neutral.svg",
+      "png": "expressions/png/neutral.png"
+    },
+    {
+      "id": "happy",
+      "name": {
+        "en": "Happy",
+        "zh": "开心"
+      },
+      "svg": "expressions/svg/happy.svg",
+      "png": "expressions/png/happy.png"
+    },
+    {
+      "id": "laugh",
+      "name": {
+        "en": "Laugh",
+        "zh": "大笑"
+      },
+      "svg": "expressions/svg/laugh.svg",
+      "png": "expressions/png/laugh.png"
+    },
+    {
+      "id": "hi",
+      "name": {
+        "en": "Hi",
+        "zh": "你好"
+      },
+      "svg": "expressions/svg/hi.svg",
+      "png": "expressions/png/hi.png"
+    },
+    {
+      "id": "love",
+      "name": {
+        "en": "Love it",
+        "zh": "喜欢"
+      },
+      "svg": "expressions/svg/love.svg",
+      "png": "expressions/png/love.png"
+    },
+    {
+      "id": "starstruck",
+      "name": {
+        "en": "Can't wait",
+        "zh": "期待"
+      },
+      "svg": "expressions/svg/starstruck.svg",
+      "png": "expressions/png/starstruck.png"
+    },
+    {
+      "id": "wink",
+      "name": {
+        "en": "Wink",
+        "zh": "俏皮"
+      },
+      "svg": "expressions/svg/wink.svg",
+      "png": "expressions/png/wink.png"
+    },
+    {
+      "id": "surprised",
+      "name": {
+        "en": "Surprised",
+        "zh": "惊讶"
+      },
+      "svg": "expressions/svg/surprised.svg",
+      "png": "expressions/png/surprised.png"
+    },
+    {
+      "id": "thinking",
+      "name": {
+        "en": "Thinking",
+        "zh": "思考"
+      },
+      "svg": "expressions/svg/thinking.svg",
+      "png": "expressions/png/thinking.png"
+    },
+    {
+      "id": "confused",
+      "name": {
+        "en": "Confused",
+        "zh": "疑惑"
+      },
+      "svg": "expressions/svg/confused.svg",
+      "png": "expressions/png/confused.png"
+    },
+    {
+      "id": "focused",
+      "name": {
+        "en": "On it",
+        "zh": "专注"
+      },
+      "svg": "expressions/svg/focused.svg",
+      "png": "expressions/png/focused.png"
+    },
+    {
+      "id": "speaking",
+      "name": {
+        "en": "Typing",
+        "zh": "输入中"
+      },
+      "svg": "expressions/svg/speaking.svg",
+      "png": "expressions/png/speaking.png"
+    },
+    {
+      "id": "listening",
+      "name": {
+        "en": "Listening",
+        "zh": "倾听"
+      },
+      "svg": "expressions/svg/listening.svg",
+      "png": "expressions/png/listening.png"
+    },
+    {
+      "id": "approve",
+      "name": {
+        "en": "Done",
+        "zh": "搞定"
+      },
+      "svg": "expressions/svg/approve.svg",
+      "png": "expressions/png/approve.png"
+    },
+    {
+      "id": "celebrate",
+      "name": {
+        "en": "Celebrate",
+        "zh": "庆祝"
+      },
+      "svg": "expressions/svg/celebrate.svg",
+      "png": "expressions/png/celebrate.png"
+    },
+    {
+      "id": "shy",
+      "name": {
+        "en": "Shy",
+        "zh": "害羞"
+      },
+      "svg": "expressions/svg/shy.svg",
+      "png": "expressions/png/shy.png"
+    },
+    {
+      "id": "sweat",
+      "name": {
+        "en": "Awkward",
+        "zh": "尴尬"
+      },
+      "svg": "expressions/svg/sweat.svg",
+      "png": "expressions/png/sweat.png"
+    },
+    {
+      "id": "sorry",
+      "name": {
+        "en": "Sorry",
+        "zh": "抱歉"
+      },
+      "svg": "expressions/svg/sorry.svg",
+      "png": "expressions/png/sorry.png"
+    },
+    {
+      "id": "sad",
+      "name": {
+        "en": "Sad",
+        "zh": "难过"
+      },
+      "svg": "expressions/svg/sad.svg",
+      "png": "expressions/png/sad.png"
+    },
+    {
+      "id": "pout",
+      "name": {
+        "en": "Hmph",
+        "zh": "哼"
+      },
+      "svg": "expressions/svg/pout.svg",
+      "png": "expressions/png/pout.png"
+    },
+    {
+      "id": "sleepy",
+      "name": {
+        "en": "Sleepy",
+        "zh": "困了"
+      },
+      "svg": "expressions/svg/sleepy.svg",
+      "png": "expressions/png/sleepy.png"
+    }
+  ]
+}

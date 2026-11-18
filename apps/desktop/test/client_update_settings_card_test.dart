@@ -1,0 +1,409 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:licoup/src/contracts/client_update_models.dart';
+import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_control_metrics.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'fixtures/settings_binding_fixture.dart';
+import 'fixtures/settings_presentation_fixture.dart';
+import 'layout/fixtures/layout_destination_presentation_fixture.dart';
+
+void main() {
+  testWidgets('the update action keeps control height on any width', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.idle,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.nightly,
+        targetReleaseTrack: ReleaseTrack.nightly,
+      ),
+    );
+    for (final width in [800.0, 360.0]) {
+      await tester.binding.setSurfaceSize(Size(width, 700));
+      await _pumpCard(tester, fixture);
+      final size = tester.getSize(
+        find.byKey(const Key('client-update-check-github')),
+      );
+      expect(size.height, settingsControlHeight);
+      expect(tester.takeException(), isNull);
+    }
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('headline and single action render; advanced stays collapsed', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.idle,
+        runningVersion: '0.1.0',
+        runningReleaseTrack: ReleaseTrack.nightly,
+        targetReleaseTrack: ReleaseTrack.nightly,
+      ),
+    );
+    await _pumpCard(tester, fixture, locale: const Locale('zh'));
+
+    expect(find.text('0.1.0 · Nightly'), findsOneWidget);
+    expect(find.text('检查更新'), findsOneWidget);
+    expect(find.text('更新并重启'), findsNothing);
+    expect(find.text('下载到本地'), findsNothing);
+    expect(find.byKey(const Key('client-update-release-track')), findsNothing);
+    expect(find.text(kClientUpdateGithubReleasesUrl), findsNothing);
+    expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
+    expect(
+      fixture.intents.values.whereType<HydrateClientUpdateIdentity>(),
+      hasLength(1),
+    );
+
+    await _expandAdvanced(tester);
+    expect(
+      find.byKey(const Key('client-update-release-track')),
+      findsOneWidget,
+    );
+    expect(find.text(kClientUpdateGithubReleasesUrl), findsOneWidget);
+    expect(find.text('下载到本地'), findsOneWidget);
+    expect(_onPressed(tester, 'client-update-download-local'), isNull);
+  });
+
+  testWidgets('nightly selects the stable update track', (tester) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.idle,
+        runningVersion: '1.2.0-nightly.3',
+        runningReleaseTrack: ReleaseTrack.nightly,
+        targetReleaseTrack: ReleaseTrack.nightly,
+      ),
+    );
+    await _pumpCard(tester, fixture);
+    await _expandAdvanced(tester);
+    await tester.tap(find.text('Stable'));
+    await tester.pump();
+    expect(
+      fixture.intents.values
+          .whereType<SetClientUpdateReleaseTrack>()
+          .single
+          .track,
+      ReleaseTrack.stable,
+    );
+  });
+
+  testWidgets('available update starts the download from the primary action', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.updateAvailable,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+        availableVersion: '1.1.0',
+        updateAvailable: true,
+        githubReleaseUrl:
+            'https://github.com/LicoLand/LicoUp/releases/tag/v1.1.0',
+      ),
+    );
+    await _pumpCard(tester, fixture);
+    expect(find.text('Version 1.1.0 available'), findsOneWidget);
+    expect(find.byKey(const Key('client-update-check-github')), findsNothing);
+    expect(_onPressed(tester, 'client-update-apply-restart'), isNotNull);
+    await tester.tap(find.byKey(const Key('client-update-apply-restart')));
+    expect(
+      fixture.intents.values.whereType<DownloadClientUpdate>(),
+      hasLength(1),
+    );
+
+    await _expandAdvanced(tester);
+    expect(_onPressed(tester, 'client-update-download-local'), isNotNull);
+    await tester.tap(find.byKey(const Key('client-update-download-local')));
+    expect(
+      fixture.intents.values.whereType<DownloadClientUpdate>(),
+      hasLength(2),
+    );
+  });
+
+  testWidgets('up-to-date and failed states render status and a quiet retry', (
+    tester,
+  ) async {
+    var fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.upToDate,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+      ),
+    );
+    await _pumpCard(tester, fixture);
+    final currentStatus = tester.widget<Text>(
+      find.byKey(const Key('client-update-status')),
+    );
+    expect(currentStatus.data, 'Up to date');
+    expect(
+      currentStatus.style?.color,
+      tester
+          .element(find.byKey(const Key('client-update-status')))
+          .licoColors
+          .success,
+    );
+    expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
+    expect(find.byKey(const Key('client-update-apply-restart')), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.failed,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.nightly,
+        targetReleaseTrack: ReleaseTrack.nightly,
+        errorCode: 'client_update_check_failed',
+      ),
+    );
+    await _pumpCard(tester, fixture, locale: const Locale('zh'));
+    expect(find.text('更新失败'), findsOneWidget);
+    expect(find.text('无法检查更新，请重试'), findsOneWidget);
+    expect(find.text('已是最新版本'), findsNothing);
+    expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
+  });
+
+  testWidgets('verified update dispatches semantic apply intent', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.verified,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+        availableVersion: '1.1.0',
+        updateAvailable: true,
+      ),
+    );
+    await _pumpCard(tester, fixture);
+    await tester.tap(find.byKey(const Key('client-update-apply-restart')));
+    expect(fixture.intents.values.whereType<ApplyClientUpdate>(), hasLength(1));
+  });
+
+  testWidgets('unavailable update metadata is neutral and retryable', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.unavailable,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+        errorCode: 'client_update_metadata_unavailable',
+      ),
+    );
+    await _pumpCard(tester, fixture, locale: const Locale('zh'));
+    expect(find.text('暂无更新资料'), findsOneWidget);
+    expect(find.text('已是最新版本'), findsNothing);
+    final status = tester.widget<Text>(
+      find.byKey(const Key('client-update-status')),
+    );
+    expect(
+      status.style?.color,
+      tester
+          .element(find.byKey(const Key('client-update-status')))
+          .licoColors
+          .textSecondary,
+    );
+    expect(_onPressed(tester, 'client-update-check-github'), isNotNull);
+  });
+
+  testWidgets('a blocked host admission lists the tasks and locks apply', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.blocked,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+        availableVersion: '1.1.0',
+        updateAvailable: true,
+        errorCode: 'client_update_admission_blocked',
+      ),
+    );
+    await _pumpCard(
+      tester,
+      fixture,
+      admission: const ClientUpdateAdmission(
+        decision: ClientUpdateAdmissionDecision.blocked,
+        blockers: [
+          ClientUpdateBlocker(
+            owner: ClientUpdateBlockerOwner.canonicalConversation,
+            kind: 'conversation-dispatch',
+            scope: 'conversation-1',
+            identity: 'dispatch-1',
+            state: 'claimed',
+          ),
+          ClientUpdateBlocker(
+            owner: ClientUpdateBlockerOwner.acativa,
+            kind: 'workflow-run',
+            identity: 'run-1',
+            state: 'running',
+          ),
+        ],
+      ),
+    );
+
+    expect(find.text('Waiting for unfinished work'), findsOneWidget);
+    expect(
+      find.text('Unfinished work still blocks this update. Stop it first.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'canonical-conversation · conversation-dispatch · claimed · dispatch-1',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('adaptive-flywheel · workflow-run · running · run-1'),
+      findsOneWidget,
+    );
+    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
+    expect(fixture.intents.values.whereType<ApplyClientUpdate>(), isEmpty);
+  });
+
+  testWidgets('an unreadable admission keeps apply locked and says why', (
+    tester,
+  ) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.blocked,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+        availableVersion: '1.1.0',
+        updateAvailable: true,
+      ),
+    );
+    await _pumpCard(
+      tester,
+      fixture,
+      admission: const ClientUpdateAdmission.unavailable(),
+    );
+
+    expect(
+      find.text(
+        'The host could not confirm it is idle, so the update stays locked.',
+      ),
+      findsOneWidget,
+    );
+    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
+  });
+
+  testWidgets('a truncated blocker list says more tasks exist', (tester) async {
+    final fixture = _fixture(
+      const ClientUpdateStatus(
+        phase: ClientUpdatePhase.verified,
+        runningVersion: '1.0.0',
+        runningReleaseTrack: ReleaseTrack.stable,
+        targetReleaseTrack: ReleaseTrack.stable,
+        availableVersion: '1.1.0',
+        updateAvailable: true,
+      ),
+    );
+    await _pumpCard(
+      tester,
+      fixture,
+      admission: const ClientUpdateAdmission(
+        decision: ClientUpdateAdmissionDecision.closed,
+        truncated: true,
+      ),
+    );
+
+    expect(find.byKey(const Key('client-update-blockers')), findsOneWidget);
+    expect(
+      find.byKey(const Key('client-update-blockers-truncated')),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'Another maintenance operation holds the switch. The update is locked.',
+      ),
+      findsOneWidget,
+    );
+    expect(_onPressed(tester, 'client-update-apply-restart'), isNull);
+  });
+}
+
+Future<void> _expandAdvanced(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('client-update-advanced-toggle')));
+  await tester.pump();
+}
+
+({
+  SettingsProjectionFixture source,
+  RecordingSettingsIntents intents,
+  SettingsBinding binding,
+  SettingsPresentationFixture presentation,
+})
+_fixture(ClientUpdateStatus status) {
+  final projection = settingsProjectionFixture(clientUpdateStatus: status);
+  final source = SettingsProjectionFixture(projection);
+  final intents = RecordingSettingsIntents();
+  return (
+    source: source,
+    intents: intents,
+    binding: settingsBindingFixture(source: source, intents: intents),
+    presentation: SettingsPresentationFixture(projection: projection),
+  );
+}
+
+Future<void> _pumpCard(
+  WidgetTester tester,
+  ({
+    SettingsProjectionFixture source,
+    RecordingSettingsIntents intents,
+    SettingsBinding binding,
+    SettingsPresentationFixture presentation,
+  })
+  fixture, {
+  Locale locale = const Locale('en'),
+  ClientUpdateAdmission admission = const ClientUpdateAdmission(
+    decision: ClientUpdateAdmissionDecision.idle,
+  ),
+}) async {
+  addTearDown(fixture.source.dispose);
+  addTearDown(fixture.presentation.dispose);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: fixture.presentation.overrides,
+      child: MaterialApp(
+        locale: locale,
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(platformBrightness: Brightness.dark),
+        home: Scaffold(
+          body: ClientUpdateSettingsCard(
+            binding: fixture.binding,
+            admission: () => admission,
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+}
+
+VoidCallback? _onPressed(WidgetTester tester, String key) {
+  final widget = tester.widget<ButtonStyleButton>(find.byKey(Key(key)));
+  return widget.onPressed;
+}

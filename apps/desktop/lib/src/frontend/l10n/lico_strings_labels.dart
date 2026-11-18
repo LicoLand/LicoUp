@@ -1,0 +1,1506 @@
+import 'package:licoup/src/contracts/presentation/layout_selection_status.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings_base.dart';
+
+extension LicoStringsLabels on LicoStrings {
+  // Execution process and reply state.
+  String get executionProcess => isChinese ? '执行过程' : 'Execution process';
+  String get executionProcessSearch =>
+      isChinese ? '搜索全部记录，按 Enter 跳转' : 'Search all records · Enter to jump';
+  String get executionProcessEmpty =>
+      isChinese ? '暂无执行记录' : 'No execution records yet';
+  String get executionProcessLoading =>
+      isChinese ? '正在读取执行记录…' : 'Loading execution records…';
+  String get executionProcessPreparing =>
+      isChinese ? '正在准备显示…' : 'Preparing display…';
+  String get executionProcessUnavailable => isChinese
+      ? '该回复没有可用的执行记录'
+      : 'Execution records are unavailable for this reply';
+  String get executionProcessIncomplete => isChinese
+      ? '历史记录不完整：该次执行的终态原文不可用'
+      : 'Historical records are incomplete: the raw terminal result is unavailable.';
+  String get replyCompletedWithoutText =>
+      isChinese ? '已结束，未生成正文' : 'Completed without a text reply';
+  String get replyCancelled => isChinese ? '已取消' : 'Cancelled';
+  String get replyInterrupted => isChinese ? '已中断' : 'Interrupted';
+  String get replyFailed => isChinese ? '回复失败' : 'Reply failed';
+  String get executionProcessLatest => isChinese ? '回到最新' : 'Back to latest';
+  String get executionProcessCopyRecord =>
+      isChinese ? '复制完整原始记录' : 'Copy complete raw record';
+  String get executionProcessPreviousMatch =>
+      isChinese ? '上一处匹配' : 'Previous match';
+  String get executionProcessNextMatch => isChinese ? '下一处匹配' : 'Next match';
+  String get executionProcessNoMatches => isChinese ? '无匹配' : 'No matches';
+  String executionProcessRecord(int number) =>
+      isChinese ? '记录 $number' : 'Record $number';
+  String executionProcessRecords(int count) =>
+      isChinese ? '$count 条记录' : '$count records';
+  String executionProcessMatches(int current, int total) => '$current / $total';
+
+  // Shared interface actions and labels.
+  String get clearSearch => isChinese ? '清除搜索' : 'Clear search';
+  String get details => isChinese ? '详情' : 'Details';
+  String defaultValueDisplay(String value) =>
+      isChinese ? '$value（默认）' : '$value (default)';
+  String get defaultModelUnavailable =>
+      isChinese ? '未检测到默认模型' : 'Default model not detected';
+  String get reasoningSetting => isChinese ? '思考' : 'Reasoning';
+  String get workingDirectory => isChinese ? '工作目录' : 'Working directory';
+  String get chooseWorkingDirectory =>
+      isChinese ? '选择工作目录' : 'Choose working directory';
+  String get changeWorkingDirectory =>
+      isChinese ? '更改工作目录' : 'Change working directory';
+  String get workingDirectoryFixedForSession => isChinese
+      ? '工作目录由当前原生会话固定；新建对话后可重新选择。'
+      : 'The current native session fixes its working directory. Start a new conversation to choose another.';
+  String get appearance => isChinese ? '外观' : 'Appearance';
+  String get network => isChinese ? '网络' : 'Network';
+  String get storageAndData => isChinese ? '存储与数据' : 'Storage & Data';
+  String get diagnostics => isChinese ? '诊断' : 'Diagnostics';
+  String get resourceUsage => isChinese ? '资源占用' : 'Resource Usage';
+  String get resourceUsageUnsupported => isChinese
+      ? '当前平台不支持进程资源统计。'
+      : 'Process resource statistics are not supported on this platform.';
+  String get memoryUsage => isChinese ? '内存占用' : 'Memory';
+  String memoryOfTotal(String total) =>
+      isChinese ? '/ $total 本机内存' : 'of $total machine';
+  String get systemConfiguration => isChinese ? '系统配置' : 'System';
+  String get clientUpdate => isChinese ? '客户端更新' : 'Client Update';
+  String get clientUpdateHint => isChinese
+      ? '从 GitHub 发布源检测并安装已签名的公开更新。不需要商店账号。'
+      : 'Detect and install signed public updates from the GitHub release source. No store account required.';
+  String get checkUpdate => isChinese ? '检查更新' : 'Check Update';
+  String get downloadToLocal => isChinese ? '下载到本地' : 'Download to local';
+  String get updateAndRestart => isChinese ? '更新并重启' : 'Update and Restart';
+  String get updateSource => isChinese ? '更新源' : 'Source';
+  String get updateSourceGithub => isChinese ? 'GitHub 发布源' : 'GitHub releases';
+  String get sourceAddress => isChinese ? '源地址' : 'Source address';
+  String get channel => isChinese ? '通道' : 'Channel';
+  String get nightlyChannel => isChinese ? 'Nightly' : 'Nightly';
+  String get stableChannel => isChinese ? '稳定版' : 'Stable';
+  String get availableVersion => isChinese ? '可用版本' : 'Available Version';
+  String get clientUpdateAdvanced => isChinese ? '高级' : 'Advanced';
+  String updateAvailableNamed(String version) =>
+      isChinese ? '新版本 $version 可用' : 'Version $version available';
+  String get digest => isChinese ? '摘要' : 'Digest';
+  String get done => isChinese ? '完成' : 'Done';
+  String get customize => isChinese ? '自定义' : 'Customize';
+
+  // Usage report chrome. Product and model names remain untranslated.
+  String get usageLoading => isChinese ? '正在加载中' : 'Loading usage';
+  String get usageLoadFailed => isChinese
+      ? '用量加载失败，请刷新重试'
+      : 'Usage could not be loaded. Refresh to retry.';
+  String get noAgentUsageInLatestReport =>
+      isChinese ? '最新报表中没有智能体用量' : 'No agent usage in the latest report';
+  String get noModelUsageInLatestReport =>
+      isChinese ? '最新报表中没有模型用量' : 'No model usage in the latest report';
+
+  /// Hosted-ledger rows whose requests carried no token fields never show a
+  /// token total; they show how many requests the plan included.
+  String agentUsageIncludedRequests(int count) =>
+      isChinese ? '已包含 $count 次请求' : 'Included · $count requests';
+  String get dailyUsageBreakdownUnavailable =>
+      isChinese ? '暂无每日用量明细' : 'Daily usage breakdown unavailable';
+  String get noModelUsageInLatestDailyBreakdown => isChinese
+      ? '最新每日明细中没有模型用量'
+      : 'No model usage in the latest daily breakdown';
+  String get noAgentUsageInLatestDailyBreakdown => isChinese
+      ? '最新每日明细中没有智能体用量'
+      : 'No agent usage in the latest daily breakdown';
+  String get tokenUsageWindow =>
+      isChinese ? 'Token 用量时间窗口' : 'Token usage window';
+  String lastDays(int days) => isChinese ? '最近 $days 天' : 'Last $days days';
+  String daysShort(int days) => isChinese ? '$days 天' : '${days}d';
+  String get customDaysHint => isChinese ? '自定义天数' : 'Custom days';
+  String get byAgent => isChinese ? '智能体' : 'By Agent';
+  String get byModel => isChinese ? '模型' : 'By Model';
+  String get byWorkflow => isChinese ? '工作流' : 'Workflow';
+  String get workflowUsage => isChinese ? '工作流用量' : 'Workflow Usage';
+  String get workflowRuns => isChinese ? '图运行' : 'Graph runs';
+  String get workflowCommands => isChinese ? '图命令' : 'Graph commands';
+  String get workflowTotal => isChinese ? '工作流总计' : 'Workflow total';
+  String get workflowCachedInput => isChinese ? '缓存输入' : 'Cached input';
+  String get workflowPrompt => isChinese ? '提示词' : 'Prompt';
+  String get workflowCompletion => isChinese ? '补全' : 'Completion';
+  String get workflowExactCoverage => isChinese ? '精确覆盖率' : 'Exact coverage';
+  String workflowCoverage(int exact, int total, int percent) => isChinese
+      ? '精确 $exact/$total（$percent%）'
+      : 'Exact $exact/$total ($percent%)';
+  String workflowRunLabel(int ordinal) =>
+      isChinese ? '图运行 $ordinal' : 'Graph run $ordinal';
+  String workflowRevisionLabel(String value) =>
+      isChinese ? '修订 · $value' : 'Revision · $value';
+  String workflowCommandLabel(int ordinal) =>
+      isChinese ? '命令 $ordinal' : 'Command $ordinal';
+  String workflowMembershipLabel(String value) =>
+      isChinese ? '成员资格 · $value' : 'Membership · $value';
+  String workflowAgentLabel(String value) =>
+      isChinese ? '智能体 · $value' : 'Agent · $value';
+  String workflowModelLabel(String value) =>
+      isChinese ? '模型 · $value' : 'Model · $value';
+  String workflowKindLabel(String value) {
+    final normalized = value.trim().toLowerCase();
+    return switch (normalized) {
+      'authorization' => isChinese ? '授权' : 'Authorization',
+      'actor' => isChinese ? '参与者' : 'Actor',
+      'script' => isChinese ? '脚本' : 'Script',
+      'workset-item' => isChinese ? '工作集项' : 'Workset item',
+      _ => isChinese ? '未知类型' : 'Unknown kind',
+    };
+  }
+
+  String workflowStatusLabel(String value) {
+    final normalized = value.trim().toLowerCase();
+    return switch (normalized) {
+      'active' || 'pending' => isChinese ? '进行中' : 'Pending',
+      'completed' || 'complete' => isChinese ? '已完成' : 'Completed',
+      'failed' => isChinese ? '失败' : 'Failed',
+      'cancelled' || 'canceled' => isChinese ? '已取消' : 'Cancelled',
+      'in_doubt' || 'indoubt' => isChinese ? '待核对' : 'In doubt',
+      'ready' || 'settled' => isChinese ? '已结算' : 'Settled',
+      _ => isChinese ? '未知状态' : 'Unknown status',
+    };
+  }
+
+  String get noWorkflowUsage => isChinese ? '暂无工作流用量' : 'No workflow usage yet';
+  String get workflowUnavailable =>
+      isChinese ? '工作流报表暂不可用' : 'Workflow report unavailable';
+  String dailyTokenUsage(String date) =>
+      isChinese ? '$date 每日 Token 用量' : 'Daily Token Usage · $date';
+  String get unknown => isChinese ? '未知' : 'Unknown';
+  String targetKindLabel(String value) {
+    final normalized = value.trim().toLowerCase();
+    return switch (normalized) {
+      'cli' => 'CLI',
+      'ide' => 'IDE',
+      'plugin' => isChinese ? '插件' : 'Plugin',
+      'editor' => isChinese ? '编辑器' : 'Editor',
+      'desktop' => isChinese ? '桌面端' : 'Desktop',
+      'desktop-agent' => isChinese ? '桌面智能体' : 'Desktop Agent',
+      'native-history' => isChinese ? '原生历史' : 'Native History',
+      _ => value,
+    };
+  }
+
+  // Agent conversation support chrome.
+  String get noSupportedTargetsDetected =>
+      isChinese ? '未检测到支持的目标。' : 'No supported targets detected.';
+  String get scrollToLoadMoreHistories =>
+      isChinese ? '滚动继续加载历史' : 'Scroll to load more histories';
+  String get loadingMoreHistories =>
+      isChinese ? '正在加载更多历史...' : 'Loading more histories...';
+  String get searchHistories => isChinese ? '搜索历史' : 'Search histories';
+  String get searchConversations => isChinese ? '搜索对话' : 'Search conversations';
+  String get searchConversationsHint => isChinese
+      ? '搜索功能和所有对话的标题、内容'
+      : 'Search features, conversation titles, and content';
+  String get searchFeaturesGroup => isChinese ? '功能' : 'Features';
+  String get noConversationSearchResults =>
+      isChinese ? '没有匹配的对话' : 'No matching conversations';
+  String get quickSwitcherHint =>
+      isChinese ? '切换到对话或应用' : 'Jump to a conversation or app';
+  String get quickSwitcherApps => isChinese ? '应用' : 'Apps';
+  String get collapseHistory => isChinese ? '收起历史' : 'Collapse history';
+  String get expandHistory => isChinese ? '展开历史' : 'Expand history';
+  // File chooser labels. File formats are intentionally not translated.
+  String get plainTextFile => isChinese ? '文本' : 'Text';
+  String get directory => isChinese ? '目录' : 'Directory';
+
+  String statusCaptionLabel(String value) {
+    if (!isChinese) {
+      return value;
+    }
+    return switch (value.trim()) {
+      'Agent archive' => '智能体归档',
+      'Agent chat' => '智能体对话',
+      'Agent tabs' => '智能体标签页',
+      'Agent usage' => '智能体用量',
+      'Appearance' => '外观',
+      'Client logs' => '客户端日志',
+      'Conversation archive' => '对话归档',
+      'Error' => '错误',
+      'LicoUp client' => '客户端',
+      'Devices' => '设备',
+      'Project archive' => '项目归档',
+      'Ready' => '就绪',
+      'Runtime' => '运行时',
+      'Settings' => '设置',
+      'Skill Hub' => '技能中心',
+      'Snapshots' => '快照',
+      'Target inspect' => '目标检查',
+      'Targets' => '目标',
+      _ => value,
+    };
+  }
+
+  // Skill Hub interface chrome. Skill names and skill-authored descriptions
+  // are source content and intentionally remain unchanged.
+  String get skillHubSubtitle => isChinese
+      ? '查看本机智能体已有技能，或将选中技能移入系统废纸篓。'
+      : 'Inspect skills already present for local agents or move one to system Trash.';
+  String get refreshSkills => isChinese ? '刷新技能' : 'Refresh Skills';
+  String get showSkillHubSettings =>
+      isChinese ? '显示技能设置' : 'Show Skill Settings';
+  String get hideSkillHubSettings =>
+      isChinese ? '隐藏技能设置' : 'Hide Skill Settings';
+  String get allSkills => isChinese ? '全部技能' : 'All Skills';
+  String get publicSkills => isChinese ? '公共技能' : 'Public Skills';
+  String get privateSkills => isChinese ? '私有技能' : 'Private Skills';
+  String get skillHubSearchHint => isChinese ? '搜索技能' : 'Search skills';
+  String get publicLabel => isChinese ? '公共' : 'Public';
+  String get privateLabel => isChinese ? '私有' : 'Private';
+  String get noSkillsFound => isChinese ? '未发现技能' : 'No Skills Found';
+  String get refreshSkillsHint => isChinese
+      ? '刷新后会重新扫描本机技能目录。'
+      : 'Refresh to scan local skill directories again.';
+  String get noDescription => isChinese ? '暂无描述' : 'No description';
+  String get skillId => isChinese ? '技能 ID' : 'Skill ID';
+  String get author => isChinese ? '作者' : 'Author';
+  String get customizeSkillIcon =>
+      isChinese ? '自定义技能图标' : 'Customize Skill Icon';
+  String get skillIconColor => isChinese ? '图标颜色' : 'Icon Color';
+  String get skillIconGlyph => isChinese ? '图标样式' : 'Icon Glyph';
+  String get version => isChinese ? '版本' : 'Version';
+  String get path => isChinese ? '路径' : 'Path';
+  String get type => isChinese ? '类型' : 'Type';
+  String get description => isChinese ? '描述' : 'Description';
+  String get request => isChinese ? '请求' : 'Request';
+  String get approve => isChinese ? '批准' : 'Approve';
+  String get revoke => isChinese ? '撤销' : 'Revoke';
+  String get installFromGitHub =>
+      isChinese ? '从 GitHub 安装' : 'Install from GitHub';
+  String get overwrite => isChinese ? '覆盖' : 'Overwrite';
+  String get pin => isChinese ? '固定' : 'Pin';
+  String get preview => isChinese ? '预览' : 'Preview';
+  String get install => isChinese ? '安装' : 'Install';
+  String get installPlan => isChinese ? '安装计划' : 'Install Plan';
+  String get installResult => isChinese ? '安装结果' : 'Install Result';
+  String get rollbackSnapshot => isChinese ? '回滚快照' : 'Rollback Snapshot';
+  String get rollback => isChinese ? '回滚' : 'Rollback';
+
+  String get refreshAgents => isChinese ? '刷新智能体' : 'Refresh Agents';
+  String get scanQrCode => isChinese ? '扫描二维码' : 'Scan QR Code';
+  String get addDevice => isChinese ? '添加设备' : 'Add Device';
+  String get pairDevice => isChinese ? '配对设备' : 'Pair Device';
+  String get pinToTop => isChinese ? '置顶' : 'Pin To Top';
+  String get unpinFromTop => isChinese ? '取消置顶' : 'Unpin From Top';
+  String get pinned => isChinese ? '已置顶' : 'Pinned';
+  String get pairingInviteToken => isChinese ? '邀请令牌' : 'Invite Token';
+  String get pairingQrDetected =>
+      isChinese ? '已识别二维码，正在配对...' : 'QR detected, pairing...';
+  String get pairingScanSuccess =>
+      isChinese ? '扫描成功，设备已配对。' : 'Scan successful. Device paired.';
+  String get pairingScanFailed => isChinese
+      ? '配对失败，请重新扫描或粘贴邀请。'
+      : 'Pairing failed. Scan again or paste the invite.';
+  String get unpairedDevice => isChinese ? '未配对设备' : 'Unpaired Device';
+  String get mac => 'Mac';
+
+  String get addTarget => isChinese ? '添加目标' : 'Add target';
+  String get adding => isChinese ? '添加中...' : 'Adding...';
+  String get rescan => isChinese ? '重新扫描' : 'Rescan';
+  String get scanning => isChinese ? '扫描中...' : 'Scanning...';
+  String get scanningLocalAgents =>
+      isChinese ? '正在扫描可用智能体...' : 'Scanning available agents...';
+  String get noLocalAgentsFound =>
+      isChinese ? '未发现可用智能体' : 'No available agents found';
+  String get agentTabNeedsApproval => isChinese ? '等待批准' : 'Needs approval';
+  String get agentTabWorkFinished => isChinese ? '工作已完成' : 'Work finished';
+  String get selectAgentToView => isChinese
+      ? '选择一个智能体查看历史并对话'
+      : 'Select an agent to view histories and chat';
+  String get target => isChinese ? '目标' : 'Target';
+  String get configPath => isChinese ? '配置路径' : 'Config path';
+  String get binaryPath => isChinese ? '程序路径' : 'Binary path';
+  String get historyRoot => isChinese ? '历史目录' : 'History root';
+  String get targetLocation => isChinese ? '运行位置' : 'Runtime location';
+  String get localMachine => isChinese ? '本机' : 'Local machine';
+  String get virtualMachine => isChinese ? '虚拟机（SSH）' : 'Virtual machine (SSH)';
+  String get virtualMachineHost => isChinese ? '虚拟机主机名或 IP' : 'VM host or IP';
+  String get sshPort => isChinese ? 'SSH 端口（可选）' : 'SSH port (optional)';
+  String get sshUser => isChinese ? 'SSH 用户（可选）' : 'SSH user (optional)';
+  String get remoteExecutable => isChinese ? '虚拟机内程序路径' : 'Executable in VM';
+  String get remoteWorkingDirectory =>
+      isChinese ? '虚拟机内工作目录' : 'Working directory in VM';
+  String virtualMachineDestination(String destination) => isChinese
+      ? '虚拟机对话目标：$destination'
+      : 'Virtual machine conversation destination: $destination';
+  String get fieldRequired => isChinese ? '此项必填' : 'This field is required';
+  String get invalidSshValue =>
+      isChinese ? '请输入有效的 SSH 参数' : 'Enter a valid SSH value';
+  String get absoluteGuestPathRequired => isChinese
+      ? '请输入以 / 开头的虚拟机绝对路径'
+      : 'Enter an absolute VM path beginning with /';
+  String get cancel => isChinese ? '取消' : 'Cancel';
+  String get apply => isChinese ? '应用' : 'Apply';
+  String get inspect => isChinese ? '查看' : 'Inspect';
+  String get plan => isChinese ? '计划' : 'Plan';
+
+  String get configured => isChinese ? '已配置' : 'Configured';
+  String get detected => isChinese ? '已检测到' : 'Detected';
+  String get manual => isChinese ? '手动添加' : 'Manual';
+  String get unavailable => isChinese ? '不可用' : 'Unavailable';
+  String get notConfigured => isChinese ? '未配置' : 'Not configured';
+
+  String get historyConversations =>
+      isChinese ? '历史对话' : 'Conversation history';
+  String get agentsSidebarConversations => isChinese ? '对话' : 'CONVERSATIONS';
+  String get ungroupedConversationProject => isChinese ? '未关联项目' : 'No project';
+  String get historyConversationSearchHint =>
+      isChinese ? '搜索历史对话' : 'Search conversations';
+  String get noMatchingNativeHistories =>
+      isChinese ? '没有匹配的历史对话' : 'No matching histories';
+  String conversationCount(int count) =>
+      isChinese ? '$count 条对话' : '$count conversations';
+  String get conversations => isChinese ? '对话' : 'Conversations';
+  String get conversationListNav => isChinese ? '对话' : 'Chats';
+  String get skillsNav => isChinese ? '技能' : 'Skills';
+  String get pluginsNav => isChinese ? '插件' : 'Plugins';
+  String get adaptationDeep => isChinese ? '深度适配' : 'Deep';
+  String get adaptationPartial => isChinese ? '部分适配' : 'Partial';
+  String get adaptationPending => isChinese ? '待评估' : 'Pending';
+  String get agentHubInstalled => isChinese ? '已安装' : 'Installed';
+  String get agentHubNotInstalled => isChinese ? '未安装' : 'Not installed';
+  String get agentHubExternal => isChinese ? '外部安装' : 'External';
+  String get agentHubFailed => isChinese ? '失败' : 'Failed';
+  String get agentHubCatalogFailed =>
+      isChinese ? '无法加载智能体目录' : 'Unable to load agent catalog';
+  String get agentHubVisit => isChinese ? '访问' : 'Visit →';
+  String get agentHubVisitFailed =>
+      isChinese ? '无法打开主页' : 'Unable to open homepage';
+  String get agentHubUpdate => isChinese ? '更新' : 'Update';
+  String get agentHubOpen => isChinese ? '对话' : 'Chat';
+  String get agentHubBack => isChinese ? '返回' : 'Back';
+  String get agentHubUninstall => isChinese ? '卸载' : 'Uninstall';
+  String get mobileNav => isChinese ? '移动' : 'Mobile';
+  String get statsNav => isChinese ? '统计' : 'Stats';
+  String get statsPanel => isChinese ? '统计面板' : 'Statistics';
+  String get newConversation => isChinese ? '新对话' : 'New Chat';
+  String get untitledConversation =>
+      isChinese ? '未命名对话' : 'Untitled conversation';
+  String get createConversation => isChinese ? '新建' : 'New';
+  String get newGroupConversation => isChinese ? '新群组' : 'New Group';
+  String get newAgentProfile => isChinese ? '创建智能体' : 'Create Agent';
+  String get agentProfileNameLabel => isChinese ? '名称' : 'Name';
+  String get agentProfileNameHint => isChinese ? '给智能体起个名字' : 'Name this agent';
+  String get agentProfileAvatarLabel => isChinese ? '头像' : 'Avatar';
+  String get agentProfileAdvancedTitle => isChinese ? '高级选项' : 'Advanced';
+  String get agentProfileContextWindow =>
+      isChinese ? '上下文窗口（tokens）' : 'Context window (tokens)';
+  String get agentProfileContextWindowHint =>
+      isChinese ? '留空使用 Agent 默认值' : 'Leave empty for the Agent default';
+  String get agentProfileDefaultPrompt =>
+      isChinese ? '默认提示词' : 'Default prompt';
+  String get agentProfileDefaultPromptHint => isChinese
+      ? '每次对话都会携带的人格指令'
+      : 'Persona instructions carried with every turn';
+  String get agentProfileEnvironment =>
+      isChinese ? '工作目录' : 'Working directory';
+  String get agentProfileCreate => isChinese ? '创建' : 'Create';
+  String agentProfileCreateFailure(String code) =>
+      isChinese ? '创建智能体失败（$code）' : 'Agent creation failed ($code)';
+  String get recycleBin => isChinese ? '回收站' : 'Recycle Bin';
+  String get archivedConversations => isChinese ? '归档' : 'Archived';
+  String get archivedConversationsTitle =>
+      isChinese ? '已归档对话' : 'Archived conversations';
+  String get searchArchivedConversations =>
+      isChinese ? '搜索已归档对话' : 'Search archived conversations';
+  String get archivedConversationsHint => isChinese
+      ? '恢复后，对话会重新出现在主列表。'
+      : 'Restored conversations return to the main list.';
+  String get noArchivedConversations =>
+      isChinese ? '没有已归档对话' : 'No archived conversations';
+  String get noMatchingArchivedConversations =>
+      isChinese ? '没有匹配的已归档对话' : 'No matching archived conversations';
+  String conversationRestored(String title) =>
+      isChinese ? '已恢复“$title”。' : 'Restored “$title”.';
+  String archivedConversationFailure(String stage, String code) => isChinese
+      ? '归档对话操作失败（$stage：$code）'
+      : 'Archived conversation operation failed ($stage: $code)';
+  String get retry => isChinese ? '重试' : 'Retry';
+  String get recentConversations => isChinese ? '最近对话' : 'Recent conversations';
+  String get noConversationsYet => isChinese ? '还没有对话' : 'No conversations yet';
+  String get conversationEmptyGreeting =>
+      isChinese ? '打个招呼，开始吧' : 'Say hi to get started';
+  String get noTrashedConversations =>
+      isChinese ? '回收站为空' : 'Recycle bin is empty';
+  String get delete => isChinese ? '删除' : 'Delete';
+  String get deleteSkillTitle => isChinese ? '删除这个技能？' : 'Delete this skill?';
+  String trashSkillMessage(String title) => isChinese
+      ? '“$title” 将移入系统回收站，可在回收站中恢复。'
+      : '"$title" will move to the system trash, where it can be restored.';
+  String get moveToSystemTrash => isChinese ? '移入回收站' : 'Move to Trash';
+  String skillMovedToSystemTrash(String title) =>
+      isChinese ? '已将“$title”移入系统回收站。' : 'Moved "$title" to the system trash.';
+  String get skillTrashFailed => isChinese
+      ? '无法将技能移入系统回收站，请确认技能仍存在且路径可访问。'
+      : 'Could not move the skill to the system trash. Check that it still exists and is accessible.';
+  String get restore => isChinese ? '恢复' : 'Restore';
+  String get confirmDeleteConversationTitle =>
+      isChinese ? '删除这段对话？' : 'Delete this conversation?';
+  String confirmDeleteConversationMessage(String title) => isChinese
+      ? '“$title” 会移入本机回收站，并在 30 天后清理。'
+      : '"$title" will move to the local recycle bin and be cleared after 30 days.';
+  String get deletedConversationsExpire => isChinese
+      ? '删除的对话会在本机回收站保留 30 天。'
+      : 'Deleted conversations stay in the local recycle bin for 30 days.';
+  String get loading => isChinese ? '加载中...' : 'Loading...';
+  String get loadingNativeHistories =>
+      isChinese ? '正在加载原生智能体历史...' : 'Loading native agent histories...';
+  String get noNativeHistories =>
+      isChinese ? '暂无原生智能体历史' : 'No native agent histories yet';
+  String get deleteNativeHistory =>
+      isChinese ? '删除原生智能体历史' : 'Delete native agent history';
+  String get archiveAgentConversations =>
+      isChinese ? '归档当前智能体对话' : 'Archive agent conversations';
+  String get collapseHistoryConversations =>
+      isChinese ? '收起历史对话' : 'Collapse conversation history';
+  String get expandHistoryConversations =>
+      isChinese ? '展开历史对话' : 'Expand conversation history';
+  String get collapseAgentsSidebar => isChinese ? '收起侧边栏' : 'Collapse sidebar';
+  String get expandAgentsSidebar => isChinese ? '展开侧边栏' : 'Expand sidebar';
+  String messagesCount(int count) =>
+      isChinese ? '$count 条消息' : '$count messages';
+  String get noMessagesInHistory => isChinese ? '还没有消息' : 'No messages yet';
+  String get scrollToLatestMessages => isChinese ? '跳到最新消息' : 'Jump to latest';
+
+  String get keywords => isChinese ? '关键词' : 'Keywords';
+  String get archiveDirectory => isChinese ? '归档目录' : 'Archive directory';
+  String get archive => isChinese ? '归档' : 'Archive';
+  String get backupConversations =>
+      isChinese ? '备份对话' : 'Back up conversations';
+  String get allConversations => isChinese ? '全部对话' : 'All conversations';
+  String get exactKeyword => isChinese ? '精确关键词' : 'Exact keyword';
+  String get archiveDestinationRequired => isChinese
+      ? '请先在设置中选择本机归档目录。'
+      : 'Choose a local archive directory in Settings first.';
+  String archiveDestination(String path) =>
+      isChinese ? '本机归档目录：$path' : 'Local archive directory: $path';
+  String get previewAndBackup => isChinese ? '预览并备份' : 'Preview & Back Up';
+  String get openDirectory => isChinese ? '跳转' : 'Open';
+  String recordsCount(String count) =>
+      isChinese ? '$count 条记录' : '$count records';
+
+  String get you => isChinese ? '你' : 'You';
+  String get agent => isChinese ? '智能体' : 'Agent';
+  String get subagentTask => isChinese ? '子智能体任务' : 'Subagent task';
+  String subagentSteps(int count) =>
+      isChinese ? '$count 步' : '$count ${count == 1 ? 'step' : 'steps'}';
+  String subagentToolCalls(int count) => isChinese
+      ? '$count 次工具调用'
+      : '$count tool ${count == 1 ? 'call' : 'calls'}';
+  String subagentNestedTasks(int count) => isChinese
+      ? '$count 个子任务'
+      : '$count nested ${count == 1 ? 'task' : 'tasks'}';
+  String get agentProcess => isChinese ? '智能体过程' : 'Agent process';
+  String get runtimeUpdateTitle => isChinese
+      ? 'Cursor Agent 正在自动更新'
+      : 'Cursor Agent is updating automatically';
+  String get runtimeUpdateCompleted => isChinese ? '更新完成' : 'Update completed';
+  String get runtimeUpdateInterrupted =>
+      isChinese ? '更新中断' : 'Update interrupted';
+  String get runtimeUpdateStaleLockHint =>
+      isChinese ? '已清理过期安装锁' : 'Stale install lock removed';
+  String get workedBriefly => isChinese ? '少于 1 秒' : 'Under 1s';
+  String get reasoningProcess => isChinese ? '思考过程' : 'Reasoning';
+  String get toolExecution => isChinese ? '工具执行' : 'Tool activity';
+  String get agentActivity => isChinese ? '智能体活动' : 'Agent activity';
+  String get runtimeLog => isChinese ? '运行记录' : 'Runtime log';
+  String runtimeLogEntries(int count) => isChinese
+      ? '运行记录 · $count 条'
+      : 'Runtime log · $count ${count == 1 ? 'entry' : 'entries'}';
+  String workedForSeconds(int seconds) =>
+      isChinese ? '处理了 $seconds秒' : 'Worked for ${seconds}s';
+  String workedForMinutes(int minutes, int seconds) {
+    if (isChinese) {
+      return seconds == 0 ? '处理了 $minutes分钟' : '处理了 $minutes分钟 $seconds秒';
+    }
+    return seconds == 0
+        ? 'Worked for ${minutes}m'
+        : 'Worked for ${minutes}m ${seconds}s';
+  }
+
+  String processSteps(int count, {required bool truncated}) {
+    final value = '$count${truncated ? '+' : ''}';
+    return isChinese
+        ? '$value 个步骤'
+        : '$value ${count == 1 && !truncated ? 'step' : 'steps'}';
+  }
+
+  String processIssues(int count) =>
+      isChinese ? '$count 个问题' : '$count ${count == 1 ? 'issue' : 'issues'}';
+  String get expandProcessDetails =>
+      isChinese ? '展开过程详情' : 'Expand process details';
+  String get collapseProcessDetails =>
+      isChinese ? '收起过程详情' : 'Collapse process details';
+  String get reasoningSummary => isChinese ? '思考摘要' : 'Reasoning summary';
+  String get providerSummary => isChinese ? '提供方摘要' : 'Provider summary';
+
+  // Messaging presentation (participant flow, details panel).
+  String get agentBadge => 'AGENT';
+  String get assistantBadge => 'ASSISTANT';
+  String get subagentBadge => 'SUBAGENT';
+  String get assistantActiveTooltip =>
+      isChinese ? '暂停 Assistant 的后续派发' : 'Pause future Assistant dispatch';
+  String get assistantPausedTooltip =>
+      isChinese ? '激活 Assistant' : 'Activate Assistant';
+  String get configureAssistantTooltip =>
+      isChinese ? '配置 Assistant' : 'Configure Assistant';
+  String get assistantProfileTitle =>
+      isChinese ? 'Assistant 配置' : 'Assistant profile';
+  String get assistantPausedStatus =>
+      isChinese ? '你的助手已暂停' : 'Your Assistant is paused';
+  String get assistantNeedsConfigurationStatus =>
+      isChinese ? '配置你的助手' : 'Configure your Assistant';
+  String get assistantWorkingAloneStatus =>
+      isChinese ? '你的助手正在独自工作' : 'Your Assistant is working independently';
+  String assistantCoordinatingStatus(int count) => isChinese
+      ? '你的助手正在协调 $count 个 Subagents'
+      : 'Your Assistant is coordinating $count ${count == 1 ? 'Subagent' : 'Subagents'}';
+  String get assistantActionsTooltip =>
+      isChinese ? '助手操作' : 'Assistant actions';
+  String get archiveGroupConversationTitle =>
+      isChinese ? '归档这段群聊对话？' : 'Archive this group conversation?';
+  String archiveGroupConversationMessage(String title) => isChinese
+      ? '“$title” 与其真正涉及的对话会一起归档保存，随后开启新的助手对话。'
+      : '“$title” and the conversations it involves will be archived together, then a new Assistant conversation opens.';
+  String archiveDefaultGroupConversationMessage(String title) => isChinese
+      ? '“$title” 将清空历史并重置为全新对话，其真正涉及的对话会一起归档保存。'
+      : '“$title” clears its history and resets to a fresh conversation; the conversations it involves are archived together.';
+  String get conversationResetNotice =>
+      isChinese ? '已开启新对话' : 'New conversation started';
+  String get archivedContinuityChildren =>
+      isChinese ? '已归档子会话' : 'Archived children';
+  String get discardPendingImages =>
+      isChinese ? '丢弃待发送的图片' : 'Discard pending images';
+  String get contacts => isChinese ? '对话' : 'Conversations';
+  String get backToGroup => isChinese ? '返回群组' : 'Back to group';
+  String mentionAgent(String agent) =>
+      isChinese ? '@ $agent' : 'Mention $agent';
+  String get automaticAdaptation => isChinese ? '自动适配' : 'Automatic adaptation';
+  String get acativa => 'Acativa';
+  String get noAuthorizedStrategies =>
+      isChinese ? '没有已授权的策略' : 'No authorized strategies';
+  String get exitStrategyMode => isChinese ? '退出策略模式' : 'Exit strategy mode';
+  String get groupConversation => isChinese ? '群聊' : 'Group';
+  String get groupConversationName => isChinese ? '群聊名称' : 'Group name';
+  String get createGroupConversation => isChinese ? '创建' : 'Create';
+  String get selectGroupConversationAgents =>
+      isChinese ? '选择至少一个 Agent' : 'Select at least one Agent';
+  String get groupConversationNeedsAgent => isChinese
+      ? '至少需要一个可用 Agent 才能创建群聊。'
+      : 'At least one available Agent is required.';
+  String get noGroupConversationsYet => isChinese ? '还没有群聊' : 'No groups yet';
+  String groupConversationMemberCount(int count) =>
+      isChinese ? '$count 位成员' : '$count members';
+  String groupConversationMemberTag(int count) =>
+      isChinese ? '$count 人' : '$count';
+  String memberPresenceStatus(String name, String status) =>
+      isChinese ? '$name$status' : '$name $status';
+  String get groupConversationMembershipChangeTitle =>
+      isChinese ? '群成员变更' : 'Group membership change';
+  String get groupConversationAvailabilityChangeTitle =>
+      isChinese ? '成员状态变更' : 'Member status change';
+  String groupConversationMemberJoined(String member) =>
+      isChinese ? '新增成员：$member' : 'Added member: $member';
+  String groupConversationMemberLeft(String member) =>
+      isChinese ? '移除成员：$member' : 'Removed member: $member';
+  String groupConversationMemberAccessSet(String member, String access) =>
+      isChinese
+      ? '权限变更：$member → $access'
+      : 'Access changed: $member → $access';
+  String groupConversationMemberAvailabilitySet(
+    String member,
+    String availability,
+  ) => isChinese
+      ? '可用状态：$member → $availability'
+      : 'Availability: $member → $availability';
+  String groupConversationMemberChangeUnknown(String member) =>
+      isChinese ? '成员记录已变更：$member' : 'Member record changed: $member';
+  String get groupConversationEventDetailsUnavailable => isChinese
+      ? '旧记录未保存具体变更'
+      : 'This older record does not include change details';
+  String get groupConversationUnknownMember =>
+      isChinese ? '未知成员' : 'Unknown member';
+  String groupConversationAccessLabel(String value) => switch (value.trim()) {
+    'owner' => isChinese ? '群主' : 'Owner',
+    'member' => isChinese ? '成员' : 'Member',
+    final normalized when normalized.isNotEmpty => normalized,
+    _ => isChinese ? '未知权限' : 'Unknown access',
+  };
+  String groupConversationAvailabilityLabel(String value) =>
+      switch (value.trim()) {
+        'available' => isChinese ? '可用' : 'Available',
+        'unavailable' => isChinese ? '不可用' : 'Unavailable',
+        final normalized when normalized.isNotEmpty => normalized,
+        _ => isChinese ? '未知状态' : 'Unknown status',
+      };
+  String groupConversationFailure(String stage, String code) => isChinese
+      ? '群聊操作失败（$stage：$code）'
+      : 'Group conversation failed ($stage: $code)';
+  String groupConversationFailureCapsule(String failureRef) => isChinese
+      ? '群聊操作失败 · $failureRef'
+      : 'Group conversation failed · $failureRef';
+  String groupConversationFailureSummary(String code, String failureRef) =>
+      switch (code.trim()) {
+        'codex_usage_limit_exceeded' =>
+          isChinese
+              ? 'Codex 模型额度已用完 · $failureRef'
+              : 'Codex model usage limit reached · $failureRef',
+        'continuity_assistant_turn_invalid' =>
+          isChinese
+              ? '助手没有留下可用回复 · $failureRef'
+              : 'Assistant left no usable reply · $failureRef',
+        _ => groupConversationFailureCapsule(failureRef),
+      };
+  String groupConversationFailureRecovery(String recovery) => switch (recovery
+      .trim()) {
+    'select_available_model_or_wait_for_quota_reset' =>
+      isChinese
+          ? '请选择其它可用模型，或等待额度重置后重试。'
+          : 'Choose another available model, or retry after the usage limit resets.',
+    _ => '',
+  };
+  String quotaUsageCardTitle(String provider) =>
+      isChinese ? '$provider 配额用量' : '$provider quota usage';
+  String quotaWindowUsedPercent(int percent) =>
+      isChinese ? '已用 $percent%' : '$percent% Used';
+
+  /// Absolute budget line for currency-metered quota windows.
+  String quotaWindowAmount(String used, String limit) =>
+      isChinese ? '已用 $used / $limit' : '$used / $limit used';
+  String quotaWindowSpent(String used) => isChinese ? '已用 $used' : '$used used';
+  String quotaWindowResetCountdown(String duration) =>
+      isChinese ? '$duration后重置' : 'Resets in $duration';
+  String quotaSnapshotCapturedAgo(String duration) =>
+      isChinese ? '数据捕获于$duration前' : 'Captured $duration ago';
+  String get quotaDurationUnderMinute => isChinese ? '不到 1 分钟' : '<1 min';
+  String quotaDurationMinutes(int minutes) =>
+      isChinese ? '$minutes 分钟' : '${minutes}m';
+  String quotaDurationHoursMinutes(int hours, int minutes) =>
+      isChinese ? '$hours 小时 $minutes 分钟' : '${hours}h ${minutes}m';
+  String quotaDurationDaysHours(int days, int hours) =>
+      isChinese ? '$days 天 $hours 小时' : '${days}d ${hours}h';
+  String groupConversationFailureDetail(String stage, String code) =>
+      '$stage · $code';
+  String get copyFailureReport => isChinese ? '复制报错' : 'Copy error';
+  String get attachments => isChinese ? '附件' : 'Attachments';
+  String get mention => isChinese ? '提及成员' : 'Mention member';
+  String get stickers => isChinese ? '表情' : 'Stickers';
+  String sendSticker(String name) =>
+      isChinese ? '发送表情 $name' : 'Send sticker $name';
+  String get stickerRecent => isChinese ? '最近' : 'Recent';
+  String get stickerRecentEmpty =>
+      isChinese ? '还没有用过的表情' : 'No recently used stickers';
+  String stickerDeliveredNote(String name) =>
+      isChinese ? '智能体收到：[表情：$name]' : 'Agent received: [sticker: $name]';
+  String get imageAttachment => isChinese ? '图片' : 'Image';
+  String get imageUnavailable => isChinese ? '图片不可用' : 'Image unavailable';
+  String get localUser => isChinese ? '本地用户' : 'Local User';
+  String get appearanceAndLayout => isChinese ? '外观与布局' : 'Appearance & Layout';
+  String get notifications => isChinese ? '通知' : 'Notifications';
+  String get noNotifications => isChinese ? '暂无通知' : 'No notifications';
+  String skillInvocationsCount(int count) => isChinese
+      ? '$count 次调用'
+      : '$count ${count == 1 ? 'invocation' : 'invocations'}';
+  String get allTimeInvocations => isChinese ? '累计调用' : 'All-time invocations';
+  String get today => isChinese ? '今天' : 'Today';
+  String get yesterday => isChinese ? '昨天' : 'Yesterday';
+  String get earlier => isChinese ? '更早' : 'Earlier';
+  String get priority => isChinese ? '优先' : 'Priority';
+  String get otherConversations => isChinese ? '其它对话' : 'Other conversations';
+
+  /// Full localized weekday name for the sidebar time groups.
+  /// [weekday] follows [DateTime.weekday]: 1 is Monday, 7 is Sunday.
+  String conversationWeekdayLabel(int weekday) {
+    const chinese = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
+    const english = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    final index = (weekday - 1).clamp(0, 6);
+    return isChinese ? chinese[index] : english[index];
+  }
+
+  String get working => isChinese ? '正在工作…' : 'Working…';
+  String get lifecycleSubmitted => isChinese ? '消息已发送' : 'Message sent';
+  String get lifecycleAccepted => isChinese ? '智能体已接收' : 'Agent received';
+  String get lifecycleProcessing => isChinese ? '智能体处理中' : 'Agent is working';
+  String get lifecycleResponding => isChinese ? '正在生成回复' : 'Writing response';
+  String get lifecycleCompleted => isChinese ? '回复已完成' : 'Response complete';
+  String get lifecycleFailed => isChinese ? '处理失败' : 'Processing failed';
+  String get lifecycleSubmittedShort => isChinese ? '已发送' : 'Sent';
+  String get lifecycleAcceptedShort => isChinese ? '已接收' : 'Received';
+  String get lifecycleProcessingShort => isChinese ? '处理' : 'Working';
+  String get lifecycleRespondingShort => isChinese ? '回复中' : 'Replying';
+  String get lifecycleCompletedShort => isChinese ? '完成' : 'Done';
+  String get messagingEmptyConversationGuide => isChinese
+      ? '选择一个对话，或开始一个新对话'
+      : 'Select a conversation or start a new one';
+  String get runtimeSection => isChinese ? '运行时' : 'Runtime';
+  String get capabilitiesSection => isChinese ? '能力' : 'Capabilities';
+  String get connectionSection => isChinese ? '连接' : 'Connection';
+  String get sessionSection => isChinese ? '会话' : 'Session';
+  String get messages => isChinese ? '消息' : 'Messages';
+  String get createdTime => isChinese ? '创建时间' : 'Created';
+  String get showDetails => isChinese ? '显示详情' : 'Show details';
+  String get hideDetails => isChinese ? '隐藏详情' : 'Hide details';
+
+  String get toolCall => isChinese ? '工具调用' : 'Tool call';
+  String get nativeAgentActivity =>
+      isChinese ? '原生智能体活动' : 'Native agent activity';
+  String get toolResult => isChinese ? '工具结果' : 'Tool result';
+  String get nativeAgentResult => isChinese ? '原生智能体结果' : 'Native agent result';
+  String get reasoning => isChinese ? '思考' : 'Reasoning';
+  String get sensitiveDetailsHidden =>
+      isChinese ? '敏感详情已隐藏' : 'Sensitive details hidden';
+  String get metadata => isChinese ? '元数据' : 'Metadata';
+  String get processError => isChinese ? '错误' : 'Error';
+  String get nativeAgentError => isChinese ? '原生智能体错误' : 'Native agent error';
+  String get nativeEvent => isChinese ? '原生事件' : 'Native event';
+  String get nativeAgentEvent => isChinese ? '原生智能体事件' : 'Native agent event';
+  String get additionalOperationsHidden => isChinese
+      ? '为保持对话流畅，其余操作已隐藏。'
+      : 'Additional operations are hidden to keep this conversation responsive.';
+  String get conversationHistoryTruncated => isChinese
+      ? '较早的历史消息未载入；当前显示最近的对话。'
+      : 'Earlier history was not loaded; the most recent conversation is shown.';
+  String get conversationDetailsTruncated => isChinese
+      ? '部分嵌套过程详情未载入；最终对话消息仍保留。'
+      : 'Some nested process details were not loaded; final conversation messages remain available.';
+  String get conversationHistoryAndDetailsTruncated => isChinese
+      ? '较早消息和部分嵌套过程详情未载入；当前显示最近的完整对话骨架。'
+      : 'Earlier messages and some nested process details were not loaded; the recent conversation outline remains available.';
+  String get invocationDetailsHidden =>
+      isChinese ? '调用详情已隐藏。' : 'Invocation details are hidden.';
+  String get toolResultRecorded =>
+      isChinese ? '已记录原生工具结果。' : 'The native tool result was recorded.';
+  String get reasoningDetailsRedacted =>
+      isChinese ? '思考详情已脱敏。' : 'Reasoning details are redacted.';
+  String get nativeMetadataHidden =>
+      isChinese ? '原生敏感元数据已隐藏。' : 'Sensitive native metadata is hidden.';
+  String get nativeAgentErrorReported =>
+      isChinese ? '原生智能体报告了错误。' : 'The native agent reported an error.';
+  String get nativeEventDetailsHidden =>
+      isChinese ? '原生事件详情已隐藏。' : 'Native event details are hidden.';
+  String get fastModeLabel => 'Fast';
+  String get currentConversation => isChinese ? '当前对话' : 'Current Conversation';
+  String get addDailyConversationAgent => isChinese ? '添加智能体' : 'Add agent';
+  String get confirmDailyConversationSelection =>
+      isChinese ? '确认添加' : 'Confirm';
+  String get noModelsFound => isChinese ? '未发现模型' : 'No Models Found';
+  String get modelSearchHint => isChinese ? '搜索模型' : 'Search models';
+  String get discoveringModels => isChinese ? '正在发现模型…' : 'Discovering models…';
+  String get noAgentsFound => isChinese ? '未发现智能体' : 'No Agents Found';
+  String get noReasoningEffortsFound =>
+      isChinese ? '未发现思考强度' : 'No Reasoning Efforts Found';
+  String get defaultPolicy => isChinese ? '默认策略' : 'Default Policy';
+  String get agentModeLabel => isChinese ? 'Agent' : 'Agent';
+  String get planModeLabel => isChinese ? 'Plan' : 'Plan';
+  String get conversationParitySendDisabled =>
+      isChinese ? '发送已关闭' : 'Sending disabled';
+  String get conversationParityCapabilities =>
+      isChinese ? '能力矩阵' : 'Capability matrix';
+  String get conversationParityCapabilitiesUnavailable =>
+      isChinese ? '暂无能力矩阵' : 'Capability matrix unavailable';
+  String get conversationParityEvidenceAge =>
+      isChinese ? '证据状态' : 'Evidence age';
+  String get conversationParityEvidenceNote =>
+      isChinese ? '验收记录' : 'Acceptance note';
+  String conversationParityEvidenceAgeValue(String ageClass) {
+    return switch (ageClass) {
+      'current' => isChinese ? '当前' : 'Current',
+      'stale' => isChinese ? '已过期' : 'Stale',
+      'missing' => isChinese ? '缺失' : 'Missing',
+      _ => isChinese ? '无' : 'Absent',
+    };
+  }
+
+  String conversationParityReason(String code) {
+    return switch (code) {
+      'evidence_missing' =>
+        isChinese
+            ? '当前版本尚未生成对等验收证据。'
+            : 'Parity evidence has not been generated for this version.',
+      'evidence_incomplete' =>
+        isChinese
+            ? '当前版本的对等验收证据不完整。'
+            : 'Parity evidence is incomplete for this version.',
+      'evidence_stale_or_incomplete' =>
+        isChinese
+            ? '对等验收证据已过期或不完整。'
+            : 'Parity evidence is stale or incomplete.',
+      'runtime_evidence_binding_mismatch' =>
+        isChinese
+            ? '运行时证据绑定不匹配，请重新扫描智能体。'
+            : 'Runtime evidence binding mismatch; rescan agents.',
+      'official_native_lane_missing' =>
+        isChinese
+            ? '缺少可公开使用的官方会话通道。'
+            : 'No official public conversation lane is available.',
+      'exact_session_resume_unavailable' =>
+        isChinese
+            ? '无法在官方通道上精确恢复原生会话。'
+            : 'Exact native session resume is unavailable on the official lane.',
+      'antigravity_cli_structured_transport_unavailable' =>
+        isChinese
+            ? 'Antigravity CLI 没有保持消息与会话 ID 离开进程参数的结构化传输。'
+            : 'Antigravity CLI has no structured transport that keeps messages and conversation IDs out of process arguments.',
+      'native_agent_executable_not_detected' =>
+        isChinese
+            ? '未检测到对应的本地 CLI 可执行程序。'
+            : 'The local CLI executable was not detected.',
+      'native_agent_runtime_profile_unavailable' =>
+        isChinese
+            ? '没有找到对应的本地会话驱动。'
+            : 'No local conversation driver is available for this agent.',
+      'runtime_message_send_unavailable' =>
+        isChinese
+            ? '当前扫描结果没有可执行的消息发送路径。'
+            : 'The current scan has no executable message-send path.',
+      'antigravity_auth_required' =>
+        isChinese
+            ? '发送前需要完成 Google 账号授权。'
+            : 'Google account authorization is required before sending.',
+      _ => isChinese ? '操作不可用：$code' : 'Operation unavailable: $code',
+    };
+  }
+
+  String messageTarget(String targetLabel) =>
+      isChinese ? '发送给 $targetLabel' : 'Message $targetLabel';
+  String get send => isChinese ? '发送' : 'Send';
+  String conversationSendFailed(String reason) =>
+      isChinese ? '发送失败：$reason' : 'Send failed: $reason';
+  String get conversationSendResolving =>
+      isChinese ? '正在检测本地运行环境…' : 'Checking the local runtime…';
+  String get conversationAuthorizeRuntimeAction =>
+      isChinese ? '授权' : 'Authorize';
+  String get conversationAuthorizingRuntimeAction =>
+      isChinese ? '授权中…' : 'Authorizing…';
+  String conversationPermissionDenied(String tool) => isChinese
+      ? '$tool 的权限请求被拒绝，回复中未执行该操作。'
+      : '$tool was denied permission; the action was not performed.';
+  String get conversationPermissionAllowAction => isChinese ? '允许' : 'Allow';
+  String get conversationPermissionAllowAndRememberAction =>
+      isChinese ? '允许并加入白名单' : 'Allow and remember';
+  String get conversationPermissionDenyAction => isChinese ? '拒绝' : 'Deny';
+
+  String get llmGatewayStart => isChinese ? '启动' : 'Start';
+  String get llmGatewayStarting => isChinese ? '启动中…' : 'Starting…';
+  String get llmGatewayStop => isChinese ? '停止' : 'Stop';
+  String get llmGatewayStarted =>
+      isChinese ? 'Gateway 已启动。' : 'Gateway started.';
+  String get llmGatewayStartFailed =>
+      isChinese ? 'Gateway 启动失败。' : 'Gateway failed to start.';
+  String get llmGatewayStopped =>
+      isChinese ? 'Gateway 已停止。' : 'Gateway stopped.';
+  String get llmGatewayStopFailed =>
+      isChinese ? 'Gateway 停止失败。' : 'Gateway failed to stop.';
+  String get llmGatewayNotReadyWaitingForAuthorization => isChinese
+      ? '尚未就绪，点击授权并启动以加载 API Key'
+      : 'Not ready; authorize and start to load API keys';
+  String get llmGatewayKeysLoadedStartToApply => isChinese
+      ? 'API Key 已加载，点击启动应用到 Gateway'
+      : 'API keys loaded; start to apply them';
+  String get llmGatewayKeysLoadedWaitingForService =>
+      isChinese ? 'API Key 已加载，等待服务启动' : 'API keys loaded; waiting for service';
+
+  String get appearanceDayNight => isChinese ? '明暗模式' : 'Brightness';
+  String get appearanceDay => isChinese ? '明亮' : 'Light';
+  String get appearanceNight => isChinese ? '暗黑' : 'Dark';
+  String get reduceMotionTitle => isChinese ? '减少动态效果' : 'Reduce motion';
+  String get reduceMotionOn => isChinese ? '开启' : 'On';
+  String get reduceMotionOff => isChinese ? '关闭' : 'Off';
+  String get appearancePreset => isChinese ? '主题风格' : 'Theme style';
+  String get layoutProfile => isChinese ? '界面布局' : 'Interface Layout';
+  String get layoutProfileDescription => isChinese
+      ? '选择整套组件风格、页面排布与交互外观。'
+      : 'Choose a complete component, arrangement, and interaction system.';
+  String get layoutLoading => isChinese ? '正在加载布局…' : 'Loading layouts…';
+  String get layoutCommitting => isChinese ? '正在保存布局…' : 'Saving layout…';
+  String get currentLayout => isChinese ? '当前布局' : 'Current layout';
+  String layoutSelectionError(LayoutSelectionErrorCode code) => switch (code) {
+    LayoutSelectionErrorCode.invalidProfile =>
+      isChinese
+          ? '布局标识无效，已保留当前布局。'
+          : 'The layout identifier is invalid. The current layout was kept.',
+    LayoutSelectionErrorCode.unavailableProfile =>
+      isChinese
+          ? '此布局当前不可用，已保留当前布局。'
+          : 'That layout is unavailable. The current layout was kept.',
+    LayoutSelectionErrorCode.invalidStoredPreference =>
+      isChinese
+          ? '已忽略无效的布局偏好并恢复默认布局。'
+          : 'An invalid layout preference was ignored and the default was restored.',
+    LayoutSelectionErrorCode.persistenceFailed =>
+      isChinese ? '无法保存布局，请稍后重试。' : 'The layout could not be saved. Try again.',
+  };
+
+  String get appearancePresetDirectory =>
+      isChinese ? '主题目录' : 'Theme directory';
+  String invalidPresetConfigs(int count) =>
+      isChinese ? '$count 个主题配置无效' : '$count invalid theme configurations';
+  String get portableData =>
+      isChinese ? 'LicoUp 数据目录' : 'LicoUp Data Directory';
+  String dataHomeSource(String source) => switch (source) {
+    'explicitEnvironment' =>
+      isChinese ? '由 LICOUP_HOME 环境变量指定' : 'Set by LICOUP_HOME',
+    'legacyEnvironment' =>
+      isChinese
+          ? '由已发布的 LICOUP_PORTABLE_DIR 别名指定'
+          : 'Set by the published LICOUP_PORTABLE_DIR alias',
+    'saved' => isChinese ? '已保存的位置' : 'Saved location',
+    'mobileSandbox' => isChinese ? '应用沙盒' : 'Application sandbox',
+    'testOverride' => isChinese ? '测试目录' : 'Test directory',
+    _ => isChinese ? '默认位置' : 'Default location',
+  };
+  String get moveDataHome => isChinese ? '移动数据目录' : 'Move data folder';
+  String get moveDataHomeDescription => isChinese
+      ? '选择新位置后，客户端会先停止写入，再复制应用数据。原目录会保留。'
+      : 'Choose a destination. LicoUp will stop its writers before copying. The original folder stays in place.';
+  String get dataHomeMoveRequiresSavedSelection => isChinese
+      ? '环境变量指定的位置和移动设备沙盒由其各自的设置管理，不能在此移动。'
+      : 'Environment-selected locations and mobile sandbox data are managed by their respective settings.';
+  String get chooseDataHomeDestination =>
+      isChinese ? '选择目标文件夹' : 'Choose destination folder';
+  String get confirmDataHomeMove =>
+      isChinese ? '移动 LicoUp 数据？' : 'Move LicoUp data?';
+  String dataHomeMoveConfirmation(String folder) => isChinese
+      ? '将在“$folder”中创建 LicoUp 文件夹并复制当前数据。迁移成功后，客户端会继续使用新位置，原目录仍会保留。'
+      : 'LicoUp will create a LicoUp folder inside “$folder”, copy the current data, and continue from the new location. The original folder will remain.';
+  String get move => isChinese ? '移动' : 'Move';
+  String get dismiss => isChinese ? '关闭' : 'Dismiss';
+  String get dataHomeMoveTitle =>
+      isChinese ? '正在移动 LicoUp 数据' : 'Moving LicoUp data';
+  String get dataHomeMoveSourcePreserved => isChinese
+      ? '原目录会保留，直到你明确选择清理。'
+      : 'The original folder stays in place until you choose to remove it.';
+  String dataHomePreviousRootRetained(String path) =>
+      isChinese ? '已保留原目录：$path' : 'Original folder retained: $path';
+  String get cleanPreviousDataHome =>
+      isChinese ? '将原目录移到废纸篓' : 'Move original folder to Trash';
+  String get confirmPreviousDataHomeCleanup =>
+      isChinese ? '清理原数据目录？' : 'Move the original data folder to Trash?';
+  String dataHomeCleanupConfirmation(String path) => isChinese
+      ? '“$path”将被移到系统废纸篓。当前 LicoUp 数据目录不会更改。'
+      : '“$path” will be moved to the system Trash. Your current LicoUp data folder will not change.';
+  String get cleaningPreviousDataHome =>
+      isChinese ? '正在清理原数据目录' : 'Cleaning the original data folder';
+  String get dataHomeRecoveryTitle =>
+      isChinese ? '找不到已保存的数据目录' : 'Saved data folder not found';
+  String get dataHomeRecoveryDescription => isChinese
+      ? 'LicoUp 不会创建空目录替代原数据。请重新连接原位置并重试，或选择一个已有的 LicoUp 数据目录。'
+      : 'LicoUp will not replace your data with an empty folder. Reconnect the saved location and retry, or choose an existing LicoUp data folder.';
+  String get chooseExistingDataHome =>
+      isChinese ? '选择已有数据目录' : 'Choose existing data folder';
+  String get confirmDataHomeRecovery =>
+      isChinese ? '使用此数据目录？' : 'Use this data folder?';
+  String get dataHomeRecoveryConfirmation => isChinese
+      ? '此现有目录将成为 LicoUp 的数据位置。请确认它包含你要继续使用的数据。'
+      : 'This existing folder will become LicoUp’s data location. Confirm that it contains the data you want to use.';
+  String dataHomeRecoveryFailed(String _) => isChinese
+      ? '恢复失败，已保存的数据位置仍不可用，LicoUp 没有创建空目录。请重试或选择包含数据的现有目录。'
+      : 'Recovery failed. The saved location is still unavailable, and LicoUp did not create an empty folder. Retry or choose an existing folder that contains your data.';
+  String get useThisFolder => isChinese ? '使用此文件夹' : 'Use this folder';
+  String dataHomeOperationTitle(String operation) => switch (operation) {
+    'cleanup' => cleaningPreviousDataHome,
+    'recovery' => isChinese ? '正在恢复 LicoUp 数据' : 'Recovering LicoUp data',
+    _ => dataHomeMoveTitle,
+  };
+  String dataHomeMovePhase(String phase) => switch (phase) {
+    'stopping-writers' =>
+      isChinese ? '正在停止应用写入进程…' : 'Stopping application writers…',
+    'stopping-conversation-host' =>
+      isChinese ? '正在排空会话主机…' : 'Draining the conversation host…',
+    'stopping-mcp-service' =>
+      isChinese ? '正在停止 MCP 服务…' : 'Stopping the MCP service…',
+    'stopping-gateway' => isChinese ? '正在停止网关…' : 'Stopping the Gateway…',
+    'waiting-for-native-access' =>
+      isChinese
+          ? '正在等待其他 LicoUp 进程释放数据目录…'
+          : 'Waiting for other LicoUp processes to release the data root…',
+    'copying-data' => isChinese ? '正在复制应用数据…' : 'Copying application data…',
+    'publishing-data' =>
+      isChinese ? '正在完成新目录…' : 'Finalizing the copied folder…',
+    'updating-owned-references' =>
+      isChinese ? '正在更新应用管理的路径引用…' : 'Updating app-managed path references…',
+    'switching-data-home' =>
+      isChinese ? '正在切换数据位置…' : 'Switching to the new location…',
+    'cleaning-previous-root' =>
+      isChinese
+          ? '正在将原目录移到系统废纸篓…'
+          : 'Moving the original folder to the system Trash…',
+    'recovering-root' =>
+      isChinese ? '正在恢复数据位置…' : 'Recovering the data location…',
+    'complete' => isChinese ? '正在重新载入客户端…' : 'Reloading the client…',
+    _ => isChinese ? '正在准备迁移…' : 'Preparing the move…',
+  };
+  String dataHomeOperationFailed(
+    String operation,
+    String code,
+  ) => switch (code) {
+    'data_home_destination_exists' ||
+    'data_home_destination_nested' ||
+    'data_home_destination_invalid' ||
+    'data_home_destination_unavailable' =>
+      isChinese
+          ? '目标位置不可用或已包含数据。当前数据位置未更改，请选择其他目标文件夹后重试。'
+          : 'Choose another destination folder and try again. The current data folder was not changed.',
+    'data_home_copy_failed' || 'data_home_copy_unsupported_entry' =>
+      isChinese
+          ? '复制未完成，当前数据位置未更改，原数据仍保留。请检查目标磁盘空间和文件访问权限后重试。'
+          : 'The copy did not finish, and the current data folder was not changed. Your original data remains. Check the destination space and file access, then retry.',
+    'data_home_relocation_recovery_required' ||
+    'data_home_recovery_autostart_failed' =>
+      isChinese
+          ? '数据副本和原数据都已保留。新位置可能已经生效；请查看设置中显示的当前数据位置，并检查已启用的自启动项。'
+          : 'Both data folders were preserved, and the new location may already be active. Check the current folder shown in Settings and review enabled startup items.',
+    'data_home_previous_root_cleanup_failed' =>
+      isChinese
+          ? '未能将原目录移到废纸篓。当前数据位置未更改，原目录仍保留；你可以稍后重试。'
+          : 'The original folder could not be moved to Trash. The active data folder is unchanged, and the original remains available to retry later.',
+    'data_home_previous_root_marker_cleanup_failed' =>
+      isChinese
+          ? '原目录已移到废纸篓，但 LicoUp 未能清除保存的清理记录。当前数据位置未更改。'
+          : 'The original folder was moved to Trash, but LicoUp could not clear its saved cleanup record. The active data folder is unchanged.',
+    _ when operation == 'cleanup' =>
+      isChinese
+          ? '清理未完成，当前数据位置未更改，原目录仍保留。请稍后重试。'
+          : 'Cleanup did not finish. The current data folder is unchanged and the original remains available to retry later.',
+    _ when operation == 'recovery' =>
+      isChinese
+          ? '恢复未完成，原有选择未更改，也没有创建空目录。请重新连接原位置并重试，或选择包含数据的现有目录。'
+          : 'Recovery did not finish, the saved selection was not changed, and no empty folder was created. Reconnect the original location or choose an existing data folder, then retry.',
+    _ =>
+      isChinese
+          ? '移动未完成，当前数据位置未更改，原数据仍保留。请检查目标文件夹后重试。'
+          : 'The move did not finish, and the current data folder was not changed. Your original data remains. Check the destination and retry.',
+  };
+  String get clientLogs => isChinese ? '客户端日志' : 'Client Logs';
+  String get exportLogs => isChinese ? '导出日志' : 'Export Logs';
+  String get exportLogsDescription => isChinese
+      ? '导出最近的客户端运行日志，用于诊断与问题反馈。'
+      : 'Export recent client runtime logs for diagnostics and support.';
+  String get exportingLogs => isChinese ? '正在导出日志...' : 'Exporting logs...';
+  String get conversationArchiveRoot =>
+      isChinese ? 'LicoUp 备份目录' : 'LicoUp Backup Directory';
+  String get snapshotRootPath => isChinese ? '快照根路径' : 'Snapshot Root Path';
+  String get save => isChinese ? '保存' : 'Save';
+  String get recommendedPlugins => isChinese ? '推荐插件' : 'Recommended Plugins';
+
+  String get refresh => isChinese ? '刷新' : 'Refresh';
+  String get protocol => isChinese ? '协议' : 'Protocol';
+  String get pairwise => isChinese ? '点对点' : 'Pairwise';
+  String get file => isChinese ? '文件' : 'File';
+  String get fileRoute => isChinese ? '文件路由' : 'File Route';
+  String get fileSync => isChinese ? '文件同步' : 'File Sync';
+  String get fileSyncHint => isChinese
+      ? '选择文件与目标目录，评估路由后需本地确认才会写入。不会自动预览或入库。'
+      : 'Pick a file and destination, evaluate the route, then confirm locally before write. No auto-preview or ingestion.';
+  String get chooseFile => isChinese ? '选择文件' : 'Choose File';
+  String get chooseDestination => isChinese ? '选择目标目录' : 'Choose Destination';
+  String get prepareFileSync => isChinese ? '准备同步' : 'Prepare Sync';
+  String get fileSyncSize => isChinese ? '大小' : 'Size';
+  String get destination => isChinese ? '目标目录' : 'Destination';
+  String get notSelected => isChinese ? '未选择' : 'Not selected';
+  String get fileSyncConfirmationPrompt => isChinese
+      ? '确认将文件写入所选目标目录？写入前不会自动打开或解析内容。'
+      : 'Confirm writing this file into the selected destination? Content is not auto-opened or ingested before write.';
+  String get confirmWrite => isChinese ? '确认写入' : 'Confirm Write';
+  String get rejectWrite => isChinese ? '拒绝写入' : 'Reject Write';
+  String get fileSyncQueue => isChinese ? '传输队列' : 'Transfer Queue';
+  String get fileSyncStatusDrafting => isChinese ? '起草中' : 'Drafting';
+  String get fileSyncStatusEvaluating => isChinese ? '评估中' : 'Evaluating';
+  String get fileSyncStatusAwaitingConfirmation =>
+      isChinese ? '等待确认' : 'Awaiting confirmation';
+  String get fileSyncStatusConfirmed => isChinese ? '已确认' : 'Confirmed';
+  String get fileSyncStatusRejected => isChinese ? '已拒绝' : 'Rejected';
+  String get fileSyncStatusFailed => isChinese ? '失败' : 'Failed';
+  String get remoteApproval => isChinese ? '远程审批' : 'Remote Approval';
+  String get remoteApprovalHint => isChinese
+      ? '来自可信客户端的加密审批请求会出现在此收件箱。详情保持密文，仅显示摘要。'
+      : 'Encrypted approval requests from trusted clients appear here. Detail stays ciphertext; only the summary is shown.';
+  String get remoteApprovalEmpty =>
+      isChinese ? '当前没有待处理的审批。' : 'No pending approvals.';
+  String get remoteApprovalHistory => isChinese ? '审批历史' : 'Approval History';
+  String get remoteApprovalStatusPending => isChinese ? '待处理' : 'Pending';
+  String get remoteApprovalStatusAllowed => isChinese ? '已批准' : 'Allowed';
+  String get remoteApprovalStatusDenied => isChinese ? '已拒绝' : 'Denied';
+  String get remoteApprovalStatusExpired => isChinese ? '已过期' : 'Expired';
+  String get remoteApprovalStatusFailed => isChinese ? '失败' : 'Failed';
+  String get risk => isChinese ? '风险' : 'Risk';
+  String get summary => isChinese ? '摘要' : 'Summary';
+  String get tools => isChinese ? '工具' : 'Tools';
+  String get allow => isChinese ? '允许' : 'Allow';
+  String get deny => isChinese ? '拒绝' : 'Deny';
+  String get sourceAgent => isChinese ? '源智能体' : 'Source Agent';
+  String get targetAgent => isChinese ? '目标智能体' : 'Target Agent';
+  String get packageDigest => isChinese ? '包摘要' : 'Package Digest';
+  String get command => isChinese ? '命令' : 'Command';
+  String get adapter => isChinese ? '适配器' : 'Adapter';
+  String get readiness => isChinese ? '就绪状态' : 'Readiness';
+  String get e2eeReadiness => isChinese ? '端到端加密就绪' : 'E2EE Readiness';
+  String get secretStore => isChinese ? '密钥存储' : 'Secret Store';
+  String get station => isChinese ? '中转站' : 'Station';
+  String get saveStation => isChinese ? '保存中转站' : 'Save Station';
+  String get defaultLabel => isChinese ? 'Lico' : 'Lico';
+  String get planDocumentTitle => isChinese ? '计划文档' : 'Plan document';
+  String get planDocumentEmpty =>
+      isChinese ? '尚未写入计划内容。' : 'No plan content yet.';
+  String get planDocumentUnavailable =>
+      isChinese ? '无法读取计划文件。' : 'The plan file could not be read.';
+  String get active => isChinese ? '当前' : 'Active';
+  String get pairing => isChinese ? '通信' : 'Communication';
+  String get tapToGeneratePairingQr =>
+      isChinese ? '点击生成配对码' : 'Tap to generate pairing code';
+  String get pairingQrPlaceholder => isChinese ? '配对二维码' : 'Pairing QR code';
+  String get deviceTrustVerification =>
+      isChinese ? '设备信任验证' : 'Device Trust Verification';
+  String get trustVerified =>
+      isChinese ? '已验证，可发送加密内容' : 'Verified — protected send enabled';
+  String get trustUnverified =>
+      isChinese ? '尚未验证，已阻止发送' : 'Unverified — protected send blocked';
+  String get trustKeyChanged =>
+      isChinese ? '密钥已变化，必须重新验证' : 'Key changed — verification required';
+  String get trustRevoked =>
+      isChinese ? '信任已撤销，已阻止发送' : 'Trust revoked — protected send blocked';
+  String get safetyNumber => isChinese ? '60 位安全码' : '60-Digit Safety Number';
+  String get localFingerprint => isChinese ? '本机指纹' : 'Local Fingerprint';
+  String get peerFingerprint => isChinese ? '对端指纹' : 'Peer Fingerprint';
+  String get verificationMethod => isChinese ? '验证方式' : 'Verification Method';
+  String get securityCapabilities =>
+      isChinese ? '安全能力' : 'Security Capabilities';
+  String get expandSecurityCapabilities =>
+      isChinese ? '展开安全能力' : 'Expand security capabilities';
+  String get collapseSecurityCapabilities =>
+      isChinese ? '收起安全能力' : 'Collapse security capabilities';
+  String get localEndpointCapabilities =>
+      isChinese ? '本机能力集合' : 'Local Endpoint Capability Sets';
+  String get peerEndpointCapabilities =>
+      isChinese ? '对端能力集合' : 'Peer Endpoint Capability Sets';
+  String get negotiatedProtocolCapabilities =>
+      isChinese ? '已协商协议能力' : 'Negotiated Protocol Capabilities';
+  String get enabledCapabilities => isChinese ? '已启用' : 'Enabled';
+  String get availableCapabilities => isChinese ? '可用' : 'Available';
+  String get unavailableCapabilities => isChinese ? '不可用' : 'Unavailable';
+  String get unverifiedCapabilities => isChinese ? '未验证' : 'Unverified';
+  String get missingMandatoryCapabilities =>
+      isChinese ? '缺失的强制能力' : 'Missing Mandatory Capabilities';
+  String get capabilityReasons => isChinese ? '原因' : 'Reasons';
+  String get selectedCustody => isChinese ? '已选择的密钥托管' : 'Selected Custody';
+  String get custodyRestartSemantics =>
+      isChinese ? '重启后的安全语义' : 'Restart Security Semantics';
+  String get enabledCustodyHardening =>
+      isChinese ? '已启用的托管加固' : 'Enabled Custody Hardening';
+  String get capabilityDependencies =>
+      isChinese ? '能力依赖关系' : 'Capability Dependencies';
+  String get noCapabilities => isChinese ? '无' : 'None';
+  String get compareSafetyNumber => isChinese
+      ? '请在两台设备上逐组核对安全码或扫描验证二维码。任何一组不同都不要继续发送。'
+      : 'Compare every group on both devices or scan the verification QR code. Do not send if any group differs.';
+  String get createCode => isChinese ? '创建配对码' : 'Create Code';
+  String get copyPairingCode => isChinese ? '复制配对码' : 'Copy Pairing Code';
+  String get pairingCodeCopied => isChinese ? '配对码已复制' : 'Pairing Code Copied';
+  String get oneTimePairingCode =>
+      isChinese ? '一次性配对码' : 'One-Time Pairing Code';
+  String get oneTimePairingCodeNotice => isChinese
+      ? '此配对码只会展示一次。重新生成会清除当前码并创建全新的配对码。'
+      : 'This pairing code is shown once. Regenerating clears it and creates a new code.';
+  String get scanPairingPrompt => isChinese
+      ? '点击右上角扫描按钮，扫描 Mac 上的 LicoUp 配对二维码。'
+      : 'Tap the scan button in the top-right corner to scan the LicoUp pairing QR code on your Mac.';
+  String get close => isChinese ? '关闭' : 'Close';
+  String get scanQrToPairPhone =>
+      isChinese ? '扫描此二维码完成手机配对' : 'Scan This QR Code To Pair Your Phone';
+  String get status => isChinese ? '状态' : 'Status';
+  String get model => isChinese ? '模型' : 'Model';
+  String get permissionMode => isChinese ? '权限模式' : 'Permission Mode';
+  String permissionModeOptionLabel(String value, String fallback) {
+    return switch (value.trim()) {
+      'default' => 'Default',
+      'plan' => 'Plan',
+      'acceptEdits' => isChinese ? '接受编辑' : 'Accept Edits',
+      'bypassPermissions' => isChinese ? '跳过权限' : 'Bypass Permissions',
+      'dangerously-skip-permissions' => isChinese ? '跳过权限' : 'Skip Permissions',
+      'read-only' => isChinese ? '只读' : 'Read Only',
+      'workspace-write' => isChinese ? '工作区写入' : 'Workspace Write',
+      'danger-full-access' => isChinese ? '完全访问' : 'Full Access',
+      _ => fallback,
+    };
+  }
+
+  String get reasoningEffort => isChinese ? '思考强度' : 'Reasoning Effort';
+  String reasoningEffortOptionLabel(String value, String fallback) {
+    return switch (value.trim().toLowerCase()) {
+      '' => 'Auto',
+      'low' => 'Low',
+      'medium' => 'Medium',
+      'high' => 'High',
+      'xhigh' || 'extra_high' || 'extra high' => 'Extra High',
+      'max' => 'Max',
+      'ultra' => 'Ultra',
+      'minimal' => 'Minimal',
+      'none' => 'None',
+      'off' => 'Off',
+      'enabled' => 'Enabled',
+      'disabled' => 'Disabled',
+      _ => fallback,
+    };
+  }
+
+  String get paired => isChinese ? '已配对' : 'Paired';
+  String get waiting => isChinese ? '等待中' : 'Waiting';
+  String get pairingId => isChinese ? '配对 ID' : 'Pairing ID';
+  String get expires => isChinese ? '过期时间' : 'Expires';
+  String get pairingCode => isChinese ? '配对码' : 'Pairing Code';
+  String get relayStatus => isChinese ? '中转状态' : 'Relay Status';
+  String get pairedComputer => isChinese ? '配对电脑' : 'Paired Computer';
+  String get arcDesktop => isChinese ? 'Arc Desktop' : 'Arc Desktop';
+  String get availableAgents => isChinese ? '可用智能体' : 'Available Agents';
+  String get desktopAgents => isChinese ? '电脑智能体' : 'Desktop Agents';
+  String get secureRelay =>
+      isChinese ? '通过电脑安全中转' : 'Secure Relay Through Computer';
+  String get noDesktopAgents =>
+      isChinese ? '这台电脑暂未回显可用智能体。' : 'No desktop agents are available yet.';
+  String displayStatusValue(String value) {
+    final normalized = value.trim().toLowerCase().replaceAll('-', '_');
+    return switch (normalized) {
+      '' => '-',
+      'true' => isChinese ? '是' : 'Yes',
+      'false' => isChinese ? '否' : 'No',
+      'ok' || 'healthy' || 'ready' => isChinese ? '正常' : 'Ready',
+      'verified' => isChinese ? '已验证' : 'Verified',
+      'unverified' => unverifiedCapabilities,
+      'partial' => isChinese ? '部分就绪' : 'Partial',
+      'failed' || 'fail' => isChinese ? '失败' : 'Failed',
+      'enabled' => isChinese ? '已启用' : 'Enabled',
+      'disabled' => isChinese ? '已禁用' : 'Disabled',
+      'available' => isChinese ? '可用' : 'Available',
+      'unavailable' => isChinese ? '不可用' : 'Unavailable',
+      'unsupported' => isChinese ? '不支持' : 'Unsupported',
+      'configured' => configured,
+      'not_configured' => notConfigured,
+      'detected' => detected,
+      'manual' => manual,
+      'trusted' => isChinese ? '已信任' : 'Trusted',
+      'untrusted' => isChinese ? '未信任' : 'Untrusted',
+      'allowed' || 'allow' => isChinese ? '允许' : 'Allowed',
+      'denied' || 'deny' => isChinese ? '拒绝' : 'Denied',
+      'blocked' => isChinese ? '已阻止' : 'Blocked',
+      'pending' || 'waiting' => waiting,
+      'paired' => paired,
+      'active' => active,
+      'inactive' => isChinese ? '未激活' : 'Inactive',
+      'running' => isChinese ? '运行中' : 'Running',
+      'stopped' => isChinese ? '已停止' : 'Stopped',
+      _ => value,
+    };
+  }
+
+  String get conversationId => isChinese ? '会话 ID' : 'Conversation ID';
+  String get conversationIdCopied =>
+      isChinese ? '会话 ID 已复制' : 'Conversation ID copied';
+  String get conversationCopyMessage => isChinese ? '复制消息' : 'Copy message';
+  String get conversationMessageCopied =>
+      isChinese ? '消息已复制' : 'Message copied';
+  String get copyCode => isChinese ? '复制代码' : 'Copy code';
+  String get codeCopied => isChinese ? '代码已复制' : 'Code copied';
+  String get edit => isChinese ? '编辑' : 'Edit';
+  String get llmGatewayLaunchAtLogin => isChinese ? '开机自启动' : 'Launch at login';
+  String get llmGatewayLaunchAtLoginDisabled =>
+      isChinese ? '已关闭开机自启动。' : 'Launch at login disabled.';
+  String get llmGatewayLaunchAtLoginEnabled =>
+      isChinese ? '已开启开机自启动。' : 'Launch at login enabled.';
+  String get llmGatewayLaunchAtLoginFailed =>
+      isChinese ? '开机自启动未能更新。' : 'Launch at login could not be updated.';
+  String get llmGatewayLaunchAtLoginHint => isChinese
+      ? '登录后单独启动 Gateway（不加载 API Key；授权仍在应用内完成）'
+      : 'Start the Gateway alone after login (no API keys; authorize in the app)';
+  String get llmGatewayLaunchAtLoginUnsupported => isChinese
+      ? '当前系统不支持 Gateway 开机自启动。'
+      : 'Launch at login is not supported on this system.';
+  String get startupAutostartHint => isChinese
+      ? '登录后自动启动桌面客户端与可选后台进程；Gateway 启动时不加载 API Key。'
+      : 'Start the desktop client and optional helpers at login. Gateway starts without API keys.';
+  String get startupAutostartLoadFailed =>
+      isChinese ? '无法读取自启动状态。' : 'Could not load auto-start status.';
+  String get startupAutostartSaveFailed =>
+      isChinese ? '自启动设置未能更新。' : 'Auto-start settings could not be updated.';
+  String get startupAutostartSaved =>
+      isChinese ? '自启动设置已保存。' : 'Auto-start settings saved.';
+  String get startupAutostartTitle => isChinese ? '开启自启动' : 'Enable auto-start';
+  String get terminalCommandTitle => isChinese ? '终端命令' : 'Terminal command';
+  String get terminalCommandStatusInstalled => isChinese ? '已安装' : 'Installed';
+  String get terminalCommandStatusStale => isChinese ? '链接失效' : 'Link is stale';
+  String get terminalCommandStatusNotInstalled =>
+      isChinese ? '未安装' : 'Not installed';
+  String get terminalCommandStatusOccupied => isChinese ? '已被占用' : 'Occupied';
+  String get terminalCommandInstall =>
+      isChinese ? '安装终端命令' : 'Install terminal command';
+  String get terminalCommandRepoint =>
+      isChinese ? '修复终端命令链接' : 'Repair terminal command link';
+  String get terminalCommandUninstall =>
+      isChinese ? '移除终端命令' : 'Remove terminal command';
+  String get terminalCommandInstalled => isChinese
+      ? '已安装：licoup 指向本应用的内置二进制'
+      : 'Installed: licoup points at this app\'s bundled binary';
+  String get terminalCommandStale => isChinese
+      ? '链接已失效：指向一个不存在的位置'
+      : 'Link is stale: it points at a missing location';
+  String get terminalCommandNotInstalled => isChinese
+      ? '未安装：将 licoup 链接到 /usr/local/bin 以便在终端中使用'
+      : 'Not installed: link licoup into /usr/local/bin for terminal use';
+  String terminalCommandOccupied(String occupiedPath) => isChinese
+      ? '目标位置已被占用：$occupiedPath。不会更改现有文件。'
+      : 'Destination is occupied: $occupiedPath. The existing file is left unchanged.';
+  String get terminalCommandDone =>
+      isChinese ? '终端命令已就绪' : 'Terminal command is ready';
+  String get terminalCommandRemoved =>
+      isChinese ? '终端命令已移除' : 'Terminal command removed';
+  String get terminalCommandCancelled =>
+      isChinese ? '已取消授权，未做任何更改' : 'Authorization cancelled; nothing changed';
+  String get terminalCommandFailed =>
+      isChinese ? '操作失败，请重试' : 'The operation failed; please try again';
+  String get startupAutostartUnsupported => isChinese
+      ? '当前系统不支持登录自启动。'
+      : 'Login auto-start is not supported on this system.';
+  String get startupBackgroundSection =>
+      isChinese ? '后台进程' : 'Background processes';
+  String get startupDesktopClientAutostart =>
+      isChinese ? '登录时启动桌面客户端' : 'Launch desktop client at login';
+  String get startupDesktopClientSection =>
+      isChinese ? '桌面客户端' : 'Desktop client';
+  String get startupGatewayHint => isChinese
+      ? '登录后单独启动 Gateway（不加载 API Key；授权仍在应用内完成）'
+      : 'Start the Gateway alone after login (no API keys; authorize in the app)';
+  String get startupLocalMcpHint => isChinese
+      ? '登录时校验打包的本地 MCP 二进制；不会静默安装智能体 MCP'
+      : 'Verify packaged local MCP binaries at login; never silently install agent MCP';
+  String get startupLocalMcpServices =>
+      isChinese ? '本地 MCP 服务' : 'Local MCP services';
+  String get startupSilentStart => isChinese ? '静默启动' : 'Silent start';
+  String get startupSilentStartHint => isChinese
+      ? '启动后自动最小化，不展示界面'
+      : 'Start minimized without showing the window';
+  String get agentHubVisitOfficial => isChinese ? '访问官网' : 'Visit site';
+  String get agentHubRefresh => isChinese ? '刷新' : 'Refresh';
+  String get pluginManagementRefresh =>
+      isChinese ? '刷新插件目录' : 'Refresh plugin catalog';
+  String get agentHubLatest => 'latest';
+  String get agentHubPackageManager => isChinese ? '包管理器' : 'Package manager';
+  String get agentHubVersion => isChinese ? '版本' : 'Version';
+  String agentHubUninstallTypeConfirm(String name) =>
+      isChinese ? '请输入 $name 以确认' : 'Type $name to confirm';
+  String get agentHubInstallTitle => isChinese ? '安装智能体' : 'Install agent';
+  String agentHubInstallProgressTitle(String name) =>
+      isChinese ? '正在安装 $name' : 'Installing $name';
+  String get agentHubInstallProgressHint => isChinese
+      ? '正在下载并安装，可能需要几分钟。'
+      : 'Downloading and installing — this can take a few minutes.';
+  String get agentHubInstallFailedHint =>
+      isChinese ? '安装失败，请重试。' : 'Installation failed. Please try again.';
+  String get agentHubDownloadSource => isChinese ? '下载源' : 'Download source';
+  String get agentHubPendingCommand => isChinese ? '即将执行的命令' : 'Command to run';
+
+  // Three-column Dashboard style: navigation rail, list filters and group
+  // members panel.
+  String get layoutColumns => isChinese ? '栏位' : 'Columns';
+  String get viewMyProfile => isChinese ? '查看我的资料' : 'View my profile';
+  String get conversationFilters => isChinese ? '筛选会话' : 'Filter conversations';
+  String get conversationFilterAll => isChinese ? '全部' : 'All';
+  String get conversationFilterAgents => isChinese ? '智能体' : 'Agents';
+  String get conversationFilterGroups => isChinese ? '群组' : 'Groups';
+  String groupMembersTitle(int count) =>
+      isChinese ? '成员 · $count' : 'Members · $count';
+  String get showGroupMembers => isChinese ? '显示成员' : 'Show members';
+  String get hideGroupMembers => isChinese ? '隐藏成员' : 'Hide members';
+  String get memberSelf => isChinese ? '我' : 'You';
+  String get memberTagAssistant => isChinese ? '助手' : 'Assistant';
+  String get memberTagAgent => 'AI';
+  String unreadMessagesLabel(int count) =>
+      isChinese ? '$count 条未读消息' : '$count unread messages';
+  String get memberStatusOnline => isChinese ? '在线' : 'Online';
+  String get memberStatusWorking => isChinese ? '工作中' : 'Working';
+  String get memberStatusNeedsApproval => isChinese ? '待审批' : 'Needs approval';
+  String get memberStatusOffline => isChinese ? '离线' : 'Offline';
+  String get memberProfileMessage => isChinese ? '发消息' : 'Message';
+  String get memberProfileMention => isChinese ? '提及' : 'Mention';
+  String get memberProfileEdit => isChinese ? '编辑资料' : 'Edit profile';
+  String get memberProfileChangeAvatar => isChinese ? '更换头像' : 'Change avatar';
+  String get memberProfileDevice =>
+      isChinese ? '设备 · 本机 macOS' : 'Device · This Mac';
+  String get memberProfileIdentity =>
+      isChinese ? '身份 · 本地身份已保护' : 'Identity · local identity protected';
+  String get memberProfileAvatarNote =>
+      isChinese ? '头像仅保存在本机' : 'Avatar is stored only on this device';
+  String get memberProfileSelfNote => isChinese
+      ? '头像与昵称仅保存在本机'
+      : 'Avatar and nickname are stored only on this device';
+  String memberProfileVendorInstalled(String vendor) =>
+      isChinese ? '$vendor · 本机已安装' : '$vendor · installed';
+  String memberProfileVendorMissing(String vendor) =>
+      isChinese ? '$vendor · 未安装' : '$vendor · not installed';
+  String get memberFactAdapter => isChinese ? '适配器' : 'Adapter';
+  String get memberFactWorkspace => isChinese ? '工作区' : 'Workspace';
+  String get memberFactSessions => isChinese ? '会话数' : 'Sessions';
+  String get memberFactLocation => isChinese ? '位置' : 'Location';
+  String get memberProfileMembers => isChinese ? '成员' : 'Members';
+  String get memberProfileGroupSettings => isChinese ? '群设置' : 'Group settings';
+  String get memberProfileDetails => isChinese ? '详情 →' : 'Details →';
+
+  // Selection facts and the adopted selection policy.
+  String get selectionFactsTitle => isChinese ? '选择依据' : 'Selection facts';
+  String selectionFactsCaption(String agent) => isChinese
+      ? '按维度说明为何选择 $agent 的候选路线。'
+      : 'Why $agent\u2019s candidate route was selected, by dimension.';
+  String get selectionFactsLoading =>
+      isChinese ? '正在读取选择依据…' : 'Loading selection facts…';
+  String get selectionFactsEmpty => isChinese
+      ? '尚未记录该 Agent 的选择依据。'
+      : 'No selection facts were recorded for this Agent.';
+  String get selectionSupport => isChinese ? '支持' : 'Support';
+  String get selectionAvailability => isChinese ? '可用性' : 'Availability';
+  String get selectionCredentials => isChinese ? '凭据' : 'Credential';
+
+  String get selectionPolicyTitle =>
+      isChinese ? '路线选择策略' : 'Route selection policy';
+  String get selectionPolicyUnadopted =>
+      isChinese ? '尚未采纳任何策略' : 'No policy is adopted';
+  String get selectionPolicyRevisionInForce =>
+      isChinese ? '生效版本' : 'Revision in force';
+  String get selectionPolicySuggestions => isChinese ? '待决建议' : 'Suggestions';
+  String get selectionPolicyNoSuggestions =>
+      isChinese ? '当前没有可采纳的建议。' : 'There is no suggestion to adopt right now.';
+  String get selectionPolicyEvaluatorLabel =>
+      isChinese ? '评估 Agent' : 'Evaluating Agent';
+  String get selectionPolicyEvidenceLimitsLabel =>
+      isChinese ? '证据范围' : 'Evidence limits';
+  String get selectionPolicyRationaleLabel => isChinese ? '理由' : 'Rationale';
+  String get selectionPolicyEffectsLabel =>
+      isChinese ? '预期影响' : 'Proposed effects';
+  String get selectionPolicyEvidenceDigestLabel =>
+      isChinese ? '证据摘要' : 'Evidence digest';
+  String get selectionPolicyRoutingOnlyNote => isChinese
+      ? '该样本仅测量了候选顺序，不构成上下文或协作方面的改进。'
+      : 'This sample measured candidate order only; it is not a context or '
+            'collaboration improvement.';
+  String get selectionPolicyInvalidated =>
+      isChinese ? '已被更新的结果作废' : 'Invalidated by a newer outcome';
+  String get selectionPolicyAdopt => isChinese ? '采纳' : 'Adopt';
+  String get selectionPolicyDismiss => isChinese ? '忽略' : 'Dismiss';
+  String get selectionPolicyRevoke =>
+      isChinese ? '撤销已采纳策略' : 'Revoke adopted policy';
+  String selectionPolicyRefused(String reasonCode) =>
+      isChinese ? '未能完成：$reasonCode' : 'Not applied: $reasonCode';
+  String get selectionPolicyOwnerAbsent => isChinese
+      ? '此版本未组合策略所有者，未做任何更改。'
+      : 'This build composes no policy owner; nothing was changed.';
+  String get selectionPolicyKeptCurrent => isChinese
+      ? '已忽略该建议，当前策略保持不变。'
+      : 'The suggestion was dismissed; the current policy stays in force.';
+}

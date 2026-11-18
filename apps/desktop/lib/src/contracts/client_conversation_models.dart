@@ -1,0 +1,426 @@
+import 'package:licoup/src/contracts/generated/conversation.g.dart';
+
+final class ClientConversationSummary {
+  const ClientConversationSummary({
+    required this.id,
+    required this.title,
+    required this.archived,
+    this.pinned = false,
+    this.group = false,
+    required this.revision,
+    required this.updatedAtUnixMs,
+    required this.membershipCount,
+    required this.eventCount,
+    this.parentConversationId,
+    this.taskGoalId,
+    this.listingKind,
+    this.memberAgentIds = const <String>[],
+    this.hasLocalOwner = false,
+    this.children = const <ClientConversationSummary>[],
+    this.archivedChildren = const <ClientConversationSummary>[],
+  });
+
+  factory ClientConversationSummary.fromJson(Map<String, dynamic> json) =>
+      ClientConversationSummary(
+        id: (json['id'] ?? '').toString(),
+        title: (json['title'] ?? '').toString(),
+        archived: json['archived'] == true,
+        pinned: json['pinned'] == true,
+        group: json['isGroup'] == true,
+        revision: _integer(json['revision']),
+        updatedAtUnixMs: _integer(json['updatedAtUnixMs']),
+        membershipCount: _integer(json['membershipCount']),
+        eventCount: _integer(json['eventCount']),
+        parentConversationId: _optionalId(json['parentConversationId']),
+        taskGoalId: _optionalId(json['taskGoalId']),
+        listingKind: _optionalId(json['listingKind']),
+        memberAgentIds: _strings(json['memberAgentIds']),
+        hasLocalOwner: json['hasLocalOwner'] == true,
+      );
+
+  final String id;
+  final String title;
+  final bool archived;
+  final bool pinned;
+  final bool group;
+  final int revision;
+  final int updatedAtUnixMs;
+  final int membershipCount;
+  final int eventCount;
+  final String? parentConversationId;
+  final String? taskGoalId;
+  final String? listingKind;
+
+  /// Active Agent members' agent ids in join order — the group mosaic
+  /// avatar in conversation lists resolves these against the target catalog.
+  final List<String> memberAgentIds;
+
+  /// Whether an active human owner membership exists — the local user's cell
+  /// in the mosaic.
+  final bool hasLocalOwner;
+  final List<ClientConversationSummary> children;
+  final List<ClientConversationSummary> archivedChildren;
+
+  bool get isGroup => group;
+
+  bool get isContinuityChild =>
+      parentConversationId != null && parentConversationId!.isNotEmpty;
+
+  ClientConversationSummary withChildren(List<ClientConversationSummary> next) {
+    return ClientConversationSummary(
+      id: id,
+      title: title,
+      archived: archived,
+      pinned: pinned,
+      group: group,
+      revision: revision,
+      updatedAtUnixMs: updatedAtUnixMs,
+      membershipCount: membershipCount,
+      eventCount: eventCount,
+      parentConversationId: parentConversationId,
+      taskGoalId: taskGoalId,
+      listingKind: listingKind,
+      memberAgentIds: memberAgentIds,
+      hasLocalOwner: hasLocalOwner,
+      children: List<ClientConversationSummary>.unmodifiable(next),
+      archivedChildren: archivedChildren,
+    );
+  }
+
+  ClientConversationSummary withArchivedChildren(
+    List<ClientConversationSummary> next,
+  ) {
+    return ClientConversationSummary(
+      id: id,
+      title: title,
+      archived: archived,
+      pinned: pinned,
+      group: group,
+      revision: revision,
+      updatedAtUnixMs: updatedAtUnixMs,
+      membershipCount: membershipCount,
+      eventCount: eventCount,
+      parentConversationId: parentConversationId,
+      taskGoalId: taskGoalId,
+      listingKind: listingKind,
+      memberAgentIds: memberAgentIds,
+      hasLocalOwner: hasLocalOwner,
+      children: children,
+      archivedChildren: List<ClientConversationSummary>.unmodifiable(next),
+    );
+  }
+}
+
+final class ClientConversation {
+  static const defaultLocalAgentGroupId = 'lico-group-default';
+
+  const ClientConversation({
+    required this.id,
+    required this.title,
+    required this.archived,
+    this.pinned = false,
+    this.group = false,
+    this.strategyRevision = '',
+    this.assistantMembershipId = '',
+    required this.revision,
+    required this.createdAtUnixMs,
+    required this.updatedAtUnixMs,
+    required this.memberships,
+    required this.eventCount,
+    this.nativeSessionReferences = const [],
+  });
+
+  factory ClientConversation.fromJson(Map<String, dynamic> json) =>
+      ClientConversation(
+        id: (json['id'] ?? '').toString(),
+        title: (json['title'] ?? '').toString(),
+        archived: json['archived'] == true,
+        pinned: json['pinned'] == true,
+        group: json['isGroup'] == true,
+        strategyRevision: (json['strategyRevision'] ?? '').toString(),
+        assistantMembershipId: (json['assistantMembershipId'] ?? '').toString(),
+        revision: _integer(json['revision']),
+        createdAtUnixMs: _integer(json['createdAtUnixMs']),
+        updatedAtUnixMs: _integer(json['updatedAtUnixMs']),
+        memberships: _maps(
+          json['memberships'],
+        ).map(ClientConversationMembership.fromJson).toList(growable: false),
+        eventCount: _integer(json['eventCount']),
+        nativeSessionReferences: _maps(json['nativeSessionReferences'])
+            .map(ClientConversationNativeSessionReference.fromJson)
+            .toList(growable: false),
+      );
+
+  final String id;
+  final String title;
+  final bool archived;
+  final bool pinned;
+  final bool group;
+  final String strategyRevision;
+  final String assistantMembershipId;
+  final int revision;
+  final int createdAtUnixMs;
+  final int updatedAtUnixMs;
+  final List<ClientConversationMembership> memberships;
+  final int eventCount;
+  final List<ClientConversationNativeSessionReference> nativeSessionReferences;
+
+  bool get isDefaultLocalAgentGroup => id == defaultLocalAgentGroupId;
+
+  ClientConversationMembership? get assistantMembership {
+    if (assistantMembershipId.isEmpty) return null;
+    for (final membership in activeMemberships) {
+      if (membership.id == assistantMembershipId) return membership;
+    }
+    return null;
+  }
+
+  List<ClientConversationMembership> get activeMemberships => memberships
+      .where(
+        (membership) =>
+            membership.status == ConversationMembershipStatus.active,
+      )
+      .toList(growable: false);
+
+  List<ClientConversationMembership> get activeAgentMemberships =>
+      activeMemberships
+          .where(
+            (membership) =>
+                membership.principal.kind == ConversationPrincipalKind.agent,
+          )
+          .toList(growable: false);
+
+  ClientConversationMembership? get localOwnerMembership {
+    for (final membership in activeMemberships) {
+      if (membership.principal.kind == ConversationPrincipalKind.human &&
+          membership.access == ConversationMembershipAccess.owner) {
+        return membership;
+      }
+    }
+    return null;
+  }
+}
+
+/// Endpoint-local catalog identities. These are never portable Event data.
+final class ClientConversationNativeSessionReference {
+  const ClientConversationNativeSessionReference({
+    required this.membershipId,
+    required this.agentId,
+    required this.nativeSessionId,
+  });
+
+  factory ClientConversationNativeSessionReference.fromJson(
+    Map<String, dynamic> json,
+  ) => ClientConversationNativeSessionReference(
+    membershipId: (json['membershipId'] ?? '').toString(),
+    agentId: (json['agentId'] ?? '').toString(),
+    nativeSessionId: (json['nativeSessionId'] ?? '').toString(),
+  );
+
+  final String membershipId;
+  final String agentId;
+  final String nativeSessionId;
+}
+
+final class ClientConversationPrincipal {
+  const ClientConversationPrincipal({
+    required this.id,
+    required this.kind,
+    required this.displayName,
+    required this.agentId,
+    required this.createdAtUnixMs,
+  });
+
+  factory ClientConversationPrincipal.fromJson(Map<String, dynamic> json) =>
+      ClientConversationPrincipal(
+        id: (json['id'] ?? '').toString(),
+        kind: ConversationPrincipalKind.fromWire(json['kind']),
+        displayName: (json['displayName'] ?? '').toString(),
+        agentId: (json['agentId'] ?? '').toString(),
+        createdAtUnixMs: _integer(json['createdAtUnixMs']),
+      );
+
+  final String id;
+  final ConversationPrincipalKind kind;
+  final String displayName;
+  final String agentId;
+  final int createdAtUnixMs;
+}
+
+final class ClientConversationMembership {
+  const ClientConversationMembership({
+    required this.id,
+    required this.conversationId,
+    required this.principal,
+    required this.access,
+    required this.status,
+    required this.joinedAtUnixMs,
+    required this.leftAtUnixMs,
+  });
+
+  factory ClientConversationMembership.fromJson(Map<String, dynamic> json) =>
+      ClientConversationMembership(
+        id: (json['id'] ?? '').toString(),
+        conversationId: (json['conversationId'] ?? '').toString(),
+        principal: ClientConversationPrincipal.fromJson(
+          _map(json['principal']),
+        ),
+        access: ConversationMembershipAccess.fromWire(json['access']),
+        status: ConversationMembershipStatus.fromWire(json['status']),
+        joinedAtUnixMs: _integer(json['joinedAtUnixMs']),
+        leftAtUnixMs: json['leftAtUnixMs'] == null
+            ? null
+            : _integer(json['leftAtUnixMs']),
+      );
+
+  final String id;
+  final String conversationId;
+  final ClientConversationPrincipal principal;
+  final ConversationMembershipAccess access;
+  final ConversationMembershipStatus status;
+  final int joinedAtUnixMs;
+  final int? leftAtUnixMs;
+}
+
+final class ClientConversationEventPart {
+  const ClientConversationEventPart({
+    required this.id,
+    required this.eventId,
+    required this.ordinal,
+    required this.kind,
+    required this.content,
+    required this.createdAtUnixMs,
+  });
+
+  factory ClientConversationEventPart.fromJson(Map<String, dynamic> json) =>
+      ClientConversationEventPart(
+        id: (json['id'] ?? '').toString(),
+        eventId: (json['eventId'] ?? '').toString(),
+        ordinal: _integer(json['ordinal']),
+        kind: ConversationEventPartKind.fromWire(json['kind']),
+        content: (json['content'] ?? '').toString(),
+        createdAtUnixMs: _integer(json['createdAtUnixMs']),
+      );
+
+  final String id;
+  final String eventId;
+  final int ordinal;
+  final ConversationEventPartKind kind;
+  final String content;
+  final int createdAtUnixMs;
+}
+
+final class ClientConversationEvent {
+  const ClientConversationEvent({
+    required this.id,
+    required this.conversationId,
+    required this.sequence,
+    required this.authorMembershipId,
+    required this.kind,
+    this.causationId = '',
+    this.correlationId = '',
+    required this.createdAtUnixMs,
+    required this.finalized,
+    required this.parts,
+  });
+
+  factory ClientConversationEvent.fromJson(Map<String, dynamic> json) =>
+      ClientConversationEvent(
+        id: (json['id'] ?? '').toString(),
+        conversationId: (json['conversationId'] ?? '').toString(),
+        sequence: _integer(json['sequence']),
+        authorMembershipId: (json['authorMembershipId'] ?? '').toString(),
+        kind: ConversationEventKind.fromWire(json['kind']),
+        causationId: (json['causationId'] ?? '').toString(),
+        correlationId: (json['correlationId'] ?? '').toString(),
+        createdAtUnixMs: _integer(json['createdAtUnixMs']),
+        finalized: json['finalized'] == true,
+        parts: _maps(
+          json['parts'],
+        ).map(ClientConversationEventPart.fromJson).toList(growable: false),
+      );
+
+  final String id;
+  final String conversationId;
+  final int sequence;
+  final String authorMembershipId;
+  final ConversationEventKind kind;
+  final String causationId;
+  final String correlationId;
+  final int createdAtUnixMs;
+  final bool finalized;
+  final List<ClientConversationEventPart> parts;
+}
+
+final class ClientConversationEventPage {
+  const ClientConversationEventPage({
+    required this.events,
+    required this.nextCursor,
+    required this.totalCount,
+    this.hasEarlier = false,
+    this.nextBeforeSequence,
+  });
+
+  factory ClientConversationEventPage.fromJson(Map<String, dynamic> json) =>
+      ClientConversationEventPage(
+        events: _maps(
+          json['events'],
+        ).map(ClientConversationEvent.fromJson).toList(growable: false),
+        nextCursor: (json['nextCursor'] ?? '').toString(),
+        totalCount: _integer(json['totalCount']),
+        hasEarlier: json['hasEarlier'] == true,
+        nextBeforeSequence: (json['nextBeforeSequence'] as num?)?.toInt(),
+      );
+
+  final List<ClientConversationEvent> events;
+  final String nextCursor;
+  final int totalCount;
+  final bool hasEarlier;
+  final int? nextBeforeSequence;
+}
+
+final class ClientConversationGroupMemberDraft {
+  const ClientConversationGroupMemberDraft({
+    required this.agentId,
+    required this.displayName,
+    this.profileId,
+    this.profileIntent,
+  });
+
+  final String agentId;
+  final String displayName;
+
+  /// When set the member joins with the `profile:<id>` principal identity
+  /// instead of `agent:<agentId>`, keeping the Persona distinct from the
+  /// backing Agent's own membership.
+  final String? profileId;
+
+  /// The persisted intent applied to the new Membership right after
+  /// creation — model, effort and the persona's advanced preferences.
+  final Map<String, dynamic>? profileIntent;
+}
+
+String? _optionalId(Object? value) {
+  final text = (value ?? '').toString().trim();
+  return text.isEmpty ? null : text;
+}
+
+int _integer(Object? value) => switch (value) {
+  final int integer => integer,
+  final num number => number.toInt(),
+  _ => int.tryParse(value?.toString() ?? '') ?? 0,
+};
+
+Map<String, dynamic> _map(Object? value) =>
+    value is Map ? Map<String, dynamic>.from(value) : const <String, dynamic>{};
+
+List<String> _strings(Object? value) => value is List
+    ? value
+          .map((entry) => entry.toString().trim())
+          .where((entry) => entry.isNotEmpty)
+          .toList(growable: false)
+    : const <String>[];
+
+List<Map<String, dynamic>> _maps(Object? value) => value is List
+    ? value.whereType<Map>().map(Map<String, dynamic>.from).toList()
+    : const <Map<String, dynamic>>[];

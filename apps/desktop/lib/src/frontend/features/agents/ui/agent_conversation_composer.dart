@@ -1,0 +1,1040 @@
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
+import 'package:licoup/src/contracts/presentation/work_control_models.dart';
+import 'package:licoup/src/frontend/features/runtime_control/work_stop_indicator.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_display_names.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_runtime_settings.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_agent_avatar.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_conversation_overlay_glass.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_glass_option_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_sticker_panel.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_focus_coordinator.dart';
+import 'package:licoup/src/frontend/shared/messaging/conversation_motion_surface.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/apple_glass.dart';
+import 'package:licoup/src/frontend/shared/ui/composer_activity_border.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_activity_animations.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_icon_button.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
+class RuntimeMessageComposer extends StatefulWidget {
+  const RuntimeMessageComposer({
+    super.key,
+    required this.targetLabel,
+    required this.initialDraft,
+    this.hasAttachments = false,
+    required this.busy,
+    this.activityVisible,
+    required this.enabled,
+    this.cancelEnabled = false,
+    required this.modelOptions,
+    required this.selectedModel,
+    required this.reasoningEffortOptions,
+    required this.selectedReasoningEffort,
+    required this.onModelChanged,
+    required this.onReasoningEffortChanged,
+    required this.onDraftChanged,
+    required this.onSend,
+    this.onSlashNewConversation,
+    this.onCancel,
+    this.defaultModel = '',
+    this.defaultReasoningEffort = '',
+    this.showRuntimeSettings = true,
+    this.showWorkingDirectory = false,
+    this.workingDirectory = '',
+    this.workingDirectorySelectable = false,
+    this.onChooseWorkingDirectory,
+    this.floatingMatteCapsule = false,
+    this.onAttach,
+    this.onPasteImage,
+    this.mentionTargets = const [],
+    this.mentionLabels = const {},
+    this.leading,
+    this.fieldTrailing,
+    this.outerPadding,
+    this.fixedHeight,
+    this.workStopStage = WorkStopStage.idle,
+    this.workStopDiagnosticReference = '',
+    this.onForceStop,
+  });
+
+  final String targetLabel;
+  final String initialDraft;
+  final bool hasAttachments;
+  final bool busy;
+
+  /// Visual activity may include history loading without changing send state.
+  final bool? activityVisible;
+  final bool enabled;
+  final bool cancelEnabled;
+  final List<String> modelOptions;
+  final String selectedModel;
+  final List<String> reasoningEffortOptions;
+  final String selectedReasoningEffort;
+  final ValueChanged<String> onModelChanged;
+  final ValueChanged<String> onReasoningEffortChanged;
+  final ValueChanged<String> onDraftChanged;
+  final Future<bool> Function(String) onSend;
+  final Future<void> Function()? onCancel;
+
+  /// Optional handler for the exact slash-new command submitted alone
+  /// (trimmed). When set, submitting that command clears the field, runs this
+  /// handler, and never reaches [onSend]. Hosts that pass nothing keep the
+  /// ordinary posting behavior.
+  final VoidCallback? onSlashNewConversation;
+
+  /// The exact command text [onSlashNewConversation] intercepts when
+  /// submitted alone (trimmed).
+  static const String slashNewCommand = '/new';
+  final String defaultModel;
+  final String defaultReasoningEffort;
+
+  /// Whether the composer embeds the runtime settings bar above the input
+  /// row. Layout presentation strategies that relocate runtime settings keep
+  /// the input row and hide the bar through this port.
+  final bool showRuntimeSettings;
+  final bool showWorkingDirectory;
+  final String workingDirectory;
+  final bool workingDirectorySelectable;
+  final VoidCallback? onChooseWorkingDirectory;
+
+  /// Messaging desktop: a rounded glass composer with text above its action
+  /// row. Console keeps its compact [AppleGlassSurface] layout.
+  final bool floatingMatteCapsule;
+
+  /// Optional attachment action in the floating composer toolbar.
+  final VoidCallback? onAttach;
+
+  /// Tries to consume the active paste as an image attachment. Returning
+  /// false delegates to Flutter's native text paste unchanged.
+  final Future<bool> Function()? onPasteImage;
+
+  /// Active group members available to the composer's @ mention picker.
+  /// Ordinary one-to-one conversations leave this empty.
+  final List<TargetCandidate> mentionTargets;
+
+  /// Agent id to the exact membership display name recognized by the group
+  /// dispatch parser. The visible compact product name remains local UI copy.
+  final Map<String, String> mentionLabels;
+
+  /// Optional action control in the floating toolbar, or before a compact field.
+  final Widget? leading;
+
+  /// Optional quiet readout before the send action (for example the assistant
+  /// model readout), placed in the floating toolbar or beside a compact field.
+  final Widget? fieldTrailing;
+
+  /// Outer padding around the whole composer. Null keeps the built-in
+  /// insets; hosts that position the composer precisely (the Desktop bottom
+  /// bar) pass an explicit value so the capsule aligns with their grid.
+  final EdgeInsetsGeometry? outerPadding;
+
+  /// The visible stop stage of the admitted work behind this composer.
+  ///
+  /// [WorkStopStage.idle] renders nothing, so hosts that do not project manual
+  /// stop keep the previous composer exactly.
+  final WorkStopStage workStopStage;
+
+  /// Short local reference for the last stop answer (an opaque correlation
+  /// id), shown beside the stage. Never a raw error or payload.
+  final String workStopDiagnosticReference;
+
+  /// Opens the explicit force-stop confirmation. Only an unconfirmed stop
+  /// offers it.
+  final VoidCallback? onForceStop;
+
+  /// Pins the compact (non-floating) capsule to this height and centers its
+  /// content vertically, ignoring the text's intrinsic growth. The Desktop
+  /// bottom bar uses this so the composer matches the icon strip's height in
+  /// its resting state; the floating capsule keeps owning multiline growth.
+  final double? fixedHeight;
+
+  @override
+  State<RuntimeMessageComposer> createState() => _RuntimeMessageComposerState();
+}
+
+class _RuntimeMessageComposerState extends State<RuntimeMessageComposer> {
+  final FocusNode _focusNode = FocusNode();
+  LayoutFocusCoordinator? _layoutFocusCoordinator;
+  bool _focused = false;
+
+  /// The latest editing value reported by the shared [InputField]. This is the
+  /// view's own echo of what the field shows: it renders the send affordance
+  /// and derives the mention query. The draft itself is owner state — the
+  /// composer never keeps a second copy and never writes one back through a
+  /// mirror channel.
+  late TextEditingValue _value;
+  late bool _hasText;
+  int? _mentionStart;
+  String _mentionQuery = '';
+  int _mentionSelection = 0;
+  final ScrollController _mentionScrollController = ScrollController();
+  late final _ComposerPasteAction _pasteAction;
+
+  @override
+  void initState() {
+    super.initState();
+    _value = _restoredValue(widget.initialDraft);
+    _hasText = _value.text.trim().isNotEmpty;
+    _focusNode.addListener(_onFocusChanged);
+    _pasteAction = _ComposerPasteAction(
+      () => widget.onPasteImage?.call() ?? Future<bool>.value(false),
+    );
+  }
+
+  /// External draft text (conversation switch, owner-driven clear after send,
+  /// attachment flows) becomes an end-of-text caret. The owner stores text
+  /// only, so the caret cannot travel with it.
+  static TextEditingValue _restoredValue(String text) => TextEditingValue(
+    text: text,
+    selection: TextSelection.collapsed(offset: text.length),
+  );
+
+  @override
+  void didUpdateWidget(covariant RuntimeMessageComposer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // An incoming draft equal to the text already on screen is the owner's
+    // echo of this field's own write, or an unrelated parent rebuild: it must
+    // never reinstall a value and reset the caret. Anything else is a real
+    // external restore.
+    if (oldWidget.initialDraft != widget.initialDraft &&
+        widget.initialDraft != _value.text) {
+      _value = _restoredValue(widget.initialDraft);
+      _hasText = _value.text.trim().isNotEmpty;
+      _mentionStart = null;
+      _mentionQuery = '';
+      _mentionSelection = 0;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final next = LayoutFocusScope.maybeOf(context);
+    if (identical(next, _layoutFocusCoordinator)) {
+      return;
+    }
+    _layoutFocusCoordinator?.unregister(
+      LayoutFocusTargets.composerField,
+      _focusNode,
+    );
+    _layoutFocusCoordinator = next;
+    _layoutFocusCoordinator?.register(
+      LayoutFocusTargets.composerField,
+      _focusNode,
+    );
+  }
+
+  @override
+  void dispose() {
+    _layoutFocusCoordinator?.unregister(
+      LayoutFocusTargets.composerField,
+      _focusNode,
+    );
+    _mentionScrollController.dispose();
+    _focusNode
+      ..removeListener(_onFocusChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  /// One write per real edit. The shared control suppresses the callback while
+  /// it installs an incoming value, so the owner's echo cannot bounce back as
+  /// another write.
+  void _onValueChanged(TextEditingValue value) {
+    _value = value;
+    widget.onDraftChanged(value.text);
+    final next = value.text.trim().isNotEmpty;
+    final mentionChanged = _syncMentionQuery();
+    if (!mounted || (next == _hasText && !mentionChanged)) return;
+    setState(() => _hasText = next);
+  }
+
+  /// Clear through the owner. The stored draft is the single source of truth;
+  /// dropping the local echo in the same frame keeps a repeated Enter from
+  /// posting the same message twice.
+  void _clearDraft() {
+    setState(_dropEcho);
+    widget.onDraftChanged('');
+  }
+
+  void _dropEcho() {
+    _value = const TextEditingValue();
+    _hasText = false;
+    _mentionStart = null;
+    _mentionQuery = '';
+    _mentionSelection = 0;
+  }
+
+  bool _syncMentionQuery() {
+    final previousStart = _mentionStart;
+    final previousQuery = _mentionQuery;
+    final selection = _value.selection;
+    _mentionStart = null;
+    _mentionQuery = '';
+    if (widget.mentionTargets.isNotEmpty &&
+        selection.isValid &&
+        selection.isCollapsed) {
+      final caret = selection.extentOffset;
+      final beforeCaret = _value.text.substring(0, caret);
+      final match = RegExp(r'(^|\s)@([^\s@]*)$').firstMatch(beforeCaret);
+      if (match != null) {
+        _mentionStart = match.start + (match.group(1)?.length ?? 0);
+        _mentionQuery = match.group(2) ?? '';
+      }
+    }
+    if (_mentionStart != previousStart || _mentionQuery != previousQuery) {
+      _mentionSelection = 0;
+      _resetMentionScroll();
+      return true;
+    }
+    return false;
+  }
+
+  List<TargetCandidate> get _mentionSuggestions {
+    if (_mentionStart == null) return const [];
+    final query = _mentionQuery.toLowerCase();
+    return widget.mentionTargets
+        .where((target) {
+          if (query.isEmpty) return true;
+          final membershipLabel = widget.mentionLabels[target.target] ?? '';
+          return membershipLabel.toLowerCase().contains(query) ||
+              agentConversationTargetDisplayName(
+                target,
+              ).toLowerCase().contains(query) ||
+              agentConversationTargetCompactDisplayName(
+                target,
+              ).toLowerCase().contains(query) ||
+              target.target.toLowerCase().contains(query);
+        })
+        .toList(growable: false);
+  }
+
+  /// Arrow, Tab and Escape belong to the picker and stay local to it. Enter is
+  /// owned by the shared control's submit port ([_handleSubmit]) because that
+  /// port runs closer to the field's own focus node.
+  KeyEventResult _handleMentionKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final suggestions = _mentionSuggestions;
+    if (suggestions.isEmpty) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      setState(() {
+        _mentionSelection = (_mentionSelection + 1) % suggestions.length;
+      });
+      _revealMentionSelection(suggestions);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+      setState(() {
+        _mentionSelection =
+            (_mentionSelection - 1 + suggestions.length) % suggestions.length;
+      });
+      _revealMentionSelection(suggestions);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.tab) {
+      _insertMention(suggestions[_mentionSelection]);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      setState(() {
+        _mentionStart = null;
+        _mentionQuery = '';
+      });
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _resetMentionScroll() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_mentionScrollController.hasClients) {
+        _mentionScrollController.jumpTo(0);
+      }
+    });
+  }
+
+  void _revealMentionSelection(List<TargetCandidate> suggestions) {
+    final selectedIndex = _mentionSelection;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          selectedIndex >= suggestions.length ||
+          !_mentionScrollController.hasClients) {
+        return;
+      }
+      const rowExtent = _ComposerMentionSuggestions.rowExtent;
+      final position = _mentionScrollController.position;
+      final itemStart = selectedIndex * rowExtent;
+      final itemEnd = itemStart + rowExtent;
+      final viewportStart = position.pixels;
+      final viewportEnd = viewportStart + position.viewportDimension;
+      final targetOffset = switch ((itemStart, itemEnd)) {
+        _ when itemStart < viewportStart => itemStart,
+        _ when itemEnd > viewportEnd => itemEnd - position.viewportDimension,
+        _ => viewportStart,
+      };
+      final bounded = targetOffset
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+      if ((bounded - viewportStart).abs() < 0.5) return;
+      _mentionScrollController.animateTo(
+        bounded,
+        duration: context.motion(LicoMotion.short),
+        curve: LicoMotion.standard,
+      );
+    });
+  }
+
+  /// Inserts an `@` trigger at the caret so the suggestion row opens as if
+  /// the user had typed it. Demo composer keeps an explicit @ button beside
+  /// the attachment affordance.
+  void _insertMentionCaret() {
+    final selection = _value.selection;
+    final caret = selection.isValid ? selection.extentOffset : -1;
+    final text = _value.text;
+    final at = caret >= 0 ? caret : text.length;
+    final needsSpace =
+        at > 0 && !RegExp(r'\s$').hasMatch(text.substring(0, at));
+    final insert = '${needsSpace ? ' ' : ''}@';
+    final next = text.replaceRange(at, at, insert);
+    setState(() {
+      _value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(offset: at + insert.length),
+      );
+      _hasText = true;
+      _syncMentionQuery();
+    });
+    widget.onDraftChanged(next);
+    _focusNode.requestFocus();
+  }
+
+  /// Recent sticker-panel picks (stickers and emoji), newest first — the demo
+  /// keeps the ten most recent entries on a dedicated tab.
+  final List<StickerRecentEntry> _recentStickerEntries = [];
+
+  void _pushStickerRecent(StickerRecentEntry entry) {
+    setState(() {
+      _recentStickerEntries
+        ..removeWhere(
+          (item) =>
+              item.expressionId == entry.expressionId &&
+              item.emoji == entry.emoji,
+        )
+        ..insert(0, entry);
+      if (_recentStickerEntries.length > 10) {
+        _recentStickerEntries.removeRange(10, _recentStickerEntries.length);
+      }
+    });
+  }
+
+  void _sendSticker(String expressionId) {
+    _pushStickerRecent((expressionId: expressionId, emoji: ''));
+    unawaited(widget.onSend(stickerWireCode(expressionId)));
+  }
+
+  void _insertEmoji(String emoji) {
+    _pushStickerRecent((expressionId: '', emoji: emoji));
+    final selection = _value.selection;
+    final caret = selection.isValid ? selection.extentOffset : -1;
+    final text = _value.text;
+    final at = caret >= 0 ? caret : text.length;
+    final next = text.replaceRange(at, at, emoji);
+    setState(() {
+      _value = TextEditingValue(
+        text: next,
+        selection: TextSelection.collapsed(offset: at + emoji.length),
+      );
+      _hasText = true;
+    });
+    widget.onDraftChanged(next);
+    _focusNode.requestFocus();
+  }
+
+  void _insertMention(TargetCandidate target) {
+    final start = _mentionStart;
+    final selection = _value.selection;
+    if (start == null || !selection.isValid || !selection.isCollapsed) return;
+    final label = (widget.mentionLabels[target.target] ?? '').trim().isEmpty
+        ? agentConversationTargetDisplayName(target)
+        : widget.mentionLabels[target.target]!.trim();
+    final replacement = '@$label ';
+    final caret = selection.extentOffset;
+    final text = _value.text;
+    final next = text.replaceRange(start, caret, replacement);
+    final nextValue = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + replacement.length),
+    );
+    setState(() {
+      _value = nextValue;
+      _hasText = next.trim().isNotEmpty;
+      _mentionStart = null;
+      _mentionQuery = '';
+    });
+    widget.onDraftChanged(next);
+    _focusNode.requestFocus();
+  }
+
+  void _onFocusChanged() {
+    final next = _focusNode.hasFocus;
+    if (next == _focused || !mounted) {
+      return;
+    }
+    setState(() => _focused = next);
+  }
+
+  /// Enter reaches the field's submit port before the picker's own key handler,
+  /// so a pending mention selection is resolved here instead of submitting.
+  void _handleSubmit(String text) {
+    final suggestions = _mentionSuggestions;
+    if (suggestions.isNotEmpty) {
+      _insertMention(suggestions[_mentionSelection]);
+      return;
+    }
+    _submit();
+  }
+
+  Future<void> _submit() async {
+    final text = _value.text.trim();
+    if ((text.isEmpty && !widget.hasAttachments) || !widget.enabled) {
+      return;
+    }
+    final onSlashNewConversation = widget.onSlashNewConversation;
+    if (onSlashNewConversation != null &&
+        text == RuntimeMessageComposer.slashNewCommand) {
+      _clearDraft();
+      onSlashNewConversation();
+      return;
+    }
+    const ConversationMotionSubmitNotification().dispatch(context);
+    _clearDraft();
+    final consumed = await widget.onSend(text);
+    if (!consumed && mounted && _value.text.trim().isEmpty) {
+      setState(() {
+        _value = _restoredValue(text);
+        _hasText = true;
+      });
+      widget.onDraftChanged(text);
+      _focusNode.requestFocus();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    final mobileClient = isMobileClientPlatform(context);
+    final interactive = widget.enabled;
+    final canSend = interactive && (_hasText || widget.hasAttachments);
+    final canCancel = widget.cancelEnabled && widget.onCancel != null;
+    final activity = widget.activityVisible ?? widget.busy;
+    final floating = widget.floatingMatteCapsule;
+    final textInput = Actions(
+      actions: widget.onPasteImage == null
+          ? const <Type, Action<Intent>>{}
+          : <Type, Action<Intent>>{PasteTextIntent: _pasteAction},
+      child: Focus(
+        onKeyEvent: _handleMentionKey,
+        child: InputField(
+          key: const Key('agent-conversation-composer-input'),
+          value: _value,
+          onValueChanged: _onValueChanged,
+          focusNode: _focusNode,
+          minLines: floating ? 2 : 1,
+          maxLines: 4,
+          textInputAction: TextInputAction.send,
+          // The owner clears after a successful send; the field never clears
+          // the business draft on its own.
+          clearOnSubmit: false,
+          // Pending attachments make an empty submit meaningful; the composer
+          // owns that decision.
+          allowEmptySubmit: widget.hasAttachments,
+          onSubmit: _handleSubmit,
+          enabled: interactive,
+          style: theme.textTheme.bodyLarge,
+          decoration: InputDecoration(
+            hintText: interactive
+                ? strings.messageTarget(widget.targetLabel)
+                : null,
+            hintStyle: theme.textTheme.bodyLarge?.copyWith(
+              color: colors.textMuted,
+            ),
+            isDense: true,
+            filled: false,
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            contentPadding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    );
+    final send = _ComposerSendButton(
+      canSend: canSend,
+      canCancel: canCancel,
+      busy: widget.busy,
+      onTap: canCancel
+          ? () => widget.onCancel?.call()
+          : canSend
+          ? _submit
+          : null,
+      tooltip: canCancel ? strings.cancel : strings.send,
+    );
+    final fieldBody = floating
+        ? Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
+                  child: textInput,
+                ),
+                Row(
+                  key: const Key('agent-conversation-composer-toolbar'),
+                  children: [
+                    if (widget.leading != null) widget.leading!,
+                    if (widget.onAttach != null)
+                      LicoIconButton(
+                        key: const Key('agent-conversation-composer-attach'),
+                        icon: const Icon(Icons.attach_file_rounded),
+                        tooltip: strings.attachments,
+                        size: LicoIconButtonSize.compact,
+                        onPressed: interactive ? widget.onAttach : null,
+                      ),
+                    MessagingStickerButton(
+                      enabled: interactive,
+                      onSendSticker: _sendSticker,
+                      onInsertEmoji: _insertEmoji,
+                      recent: _recentStickerEntries,
+                    ),
+                    if (widget.mentionTargets.isNotEmpty)
+                      LicoIconButton(
+                        key: const Key('agent-conversation-composer-mention'),
+                        icon: const Icon(Icons.alternate_email_rounded),
+                        tooltip: strings.mention,
+                        size: LicoIconButtonSize.compact,
+                        onPressed: interactive ? _insertMentionCaret : null,
+                      ),
+                    const Spacer(),
+                    if (widget.fieldTrailing != null) ...[
+                      widget.fieldTrailing!,
+                      const SizedBox(width: 8),
+                    ],
+                    send,
+                  ],
+                ),
+              ],
+            ),
+          )
+        : Padding(
+            padding: const EdgeInsets.all(LicoRadius.composerInset),
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: widget.fixedHeight != null
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: double.infinity,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 5, 4, 5),
+                          child: textInput,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (widget.fieldTrailing != null)
+                    widget.fixedHeight != null
+                        ? widget.fieldTrailing!
+                        : Align(
+                            alignment: Alignment.bottomCenter,
+                            child: widget.fieldTrailing!,
+                          ),
+                  const SizedBox(width: LicoContentSpacing.compact),
+                  send,
+                ],
+              ),
+            ),
+          );
+    final radius = BorderRadius.circular(
+      floating
+          ? MessagingDesktopMetrics.conversationComposerCapsuleCornerRadius
+          : LicoRadius.composerField,
+    );
+    final surface = floating
+        ? Material(
+            color: Colors.transparent,
+            child: MessagingConversationOverlayGlass(
+              borderRadius: radius,
+              focused: _focused && interactive,
+              readabilityVeil: true,
+              veilFill: (colors.isDark
+                  ? LicoPaneGlass.contentInnerCardFill
+                  : colors.surfaceLow),
+              drawRim: !activity,
+              child: fieldBody,
+            ),
+          )
+        : AppleGlassSurface(
+            borderRadius: radius,
+            focused: _focused && interactive,
+            drawRim: !activity,
+            child: fieldBody,
+          );
+    final fieldNotifying = SizeChangedLayoutNotifier(
+      key: const Key('agent-conversation-composer-field'),
+      child: ConversationMotionComposerOutline(
+        borderRadius: radius,
+        child: ComposerActivityBorder(
+          active: activity,
+          borderRadius: radius,
+          color: colors.isDark ? colors.accent : colors.primaryStrong,
+          child: surface,
+        ),
+      ),
+    );
+    final fixedHeight = widget.fixedHeight;
+    final field = fixedHeight != null && !floating
+        ? SizedBox(height: fixedHeight, child: fieldNotifying)
+        : fieldNotifying;
+    final mentionSuggestions = _mentionSuggestions;
+    return Padding(
+      padding:
+          widget.outerPadding ??
+          (mobileClient
+              ? const EdgeInsets.fromLTRB(12, 10, 12, 12)
+              : widget.floatingMatteCapsule
+              ? const EdgeInsets.fromLTRB(
+                  MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
+                  8,
+                  MessagingDesktopMetrics.conversationComposerCapsuleInsetH,
+                  MessagingDesktopMetrics.conversationComposerCapsuleInsetV,
+                )
+              : const EdgeInsets.fromLTRB(12, 8, 12, 10)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (widget.showRuntimeSettings &&
+              (widget.modelOptions.isNotEmpty ||
+                  widget.reasoningEffortOptions.isNotEmpty ||
+                  widget.showWorkingDirectory)) ...[
+            ConversationRuntimeSettingsBar(
+              enabled: interactive,
+              modelOptions: widget.modelOptions,
+              selectedModel: widget.selectedModel,
+              reasoningEffortOptions: widget.reasoningEffortOptions,
+              selectedReasoningEffort: widget.selectedReasoningEffort,
+              onModelChanged: widget.onModelChanged,
+              onReasoningEffortChanged: widget.onReasoningEffortChanged,
+              defaultModel: widget.defaultModel,
+              defaultReasoningEffort: widget.defaultReasoningEffort,
+              showWorkingDirectory: widget.showWorkingDirectory,
+              workingDirectory: widget.workingDirectory,
+              workingDirectorySelectable: widget.workingDirectorySelectable,
+              onChooseWorkingDirectory: widget.onChooseWorkingDirectory,
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (mentionSuggestions.isNotEmpty) ...[
+            _ComposerMentionSuggestions(
+              targets: mentionSuggestions,
+              labels: widget.mentionLabels,
+              selectedIndex: _mentionSelection,
+              scrollController: _mentionScrollController,
+              onSelected: _insertMention,
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (widget.workStopStage != WorkStopStage.idle) ...[
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 6),
+              child: WorkStopIndicator(
+                stage: widget.workStopStage,
+                diagnosticReference: widget.workStopDiagnosticReference,
+                chinese: strings.isChinese,
+                onForceStop: widget.onForceStop,
+              ),
+            ),
+          ],
+          if (floating)
+            field
+          else
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (widget.leading != null) ...[
+                    widget.leading!,
+                    const SizedBox(
+                      width: MessagingDesktopMetrics
+                          .conversationHeaderCapsuleButtonGap,
+                    ),
+                  ],
+                  Expanded(child: field),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+final class _ComposerPasteAction extends Action<PasteTextIntent> {
+  _ComposerPasteAction(this.onPasteImage);
+
+  final Future<bool> Function() onPasteImage;
+  bool _pending = false;
+
+  @override
+  Object? invoke(PasteTextIntent intent) {
+    if (_pending) return null;
+    final nativePaste = callingAction;
+    _pending = true;
+    onPasteImage()
+        .then((consumed) {
+          if (!consumed) nativePaste?.invoke(intent);
+        })
+        .onError((_, _) {
+          nativePaste?.invoke(intent);
+        })
+        .whenComplete(() => _pending = false);
+    return null;
+  }
+
+  @override
+  bool isEnabled(PasteTextIntent intent) =>
+      !_pending && (callingAction?.isEnabled(intent) ?? false);
+
+  @override
+  bool consumesKey(PasteTextIntent intent) =>
+      callingAction?.consumesKey(intent) ?? true;
+}
+
+class _ComposerMentionSuggestions extends StatelessWidget {
+  const _ComposerMentionSuggestions({
+    required this.targets,
+    required this.labels,
+    required this.selectedIndex,
+    required this.scrollController,
+    required this.onSelected,
+  });
+
+  static const double rowExtent = 54;
+
+  final List<TargetCandidate> targets;
+  final Map<String, String> labels;
+  final int selectedIndex;
+  final ScrollController scrollController;
+  final ValueChanged<TargetCandidate> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = math.min(targets.length * rowExtent + 8, 224.0);
+    return MessagingGlassOptionCard(
+      key: const Key('agent-conversation-mention-suggestions'),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      constraints: BoxConstraints(maxHeight: height),
+      child: SizedBox(
+        height: height,
+        child: ListView.builder(
+          key: const Key('agent-conversation-mention-list'),
+          controller: scrollController,
+          padding: EdgeInsets.zero,
+          itemExtent: rowExtent,
+          itemCount: targets.length,
+          itemBuilder: (context, index) {
+            final target = targets[index];
+            return _ComposerMentionSuggestionRow(
+              key: Key('agent-conversation-mention-${target.target}'),
+              target: target,
+              label: (labels[target.target] ?? '').trim().isEmpty
+                  ? agentConversationTargetDisplayName(target)
+                  : labels[target.target]!.trim(),
+              selected: index == selectedIndex,
+              onTap: () => onSelected(target),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerMentionSuggestionRow extends StatelessWidget {
+  const _ComposerMentionSuggestionRow({
+    super.key,
+    required this.target,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final TargetCandidate target;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Material(
+      key: Key('agent-conversation-mention-surface-${target.target}'),
+      color: selected
+          ? (colors.isDark
+                ? Colors.white.withAlpha(24)
+                : Colors.black.withAlpha(18))
+          : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          height: 54,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                MessagingAgentAvatar(target: target, size: 36, iconSize: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.text,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        '@${target.target}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.textMuted,
+                          fontSize: 11.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The composer's embedded send affordance.
+///
+/// Quiet while there is nothing to send, brand-filled the moment a real
+/// message can go out. Because lemon appears only in the sendable state, the
+/// brand color stays scarce in a surface the user stares at all day.
+///
+/// The control is a perfect circle — a deliberate accent inside the rounded
+/// field capsule, not a concentric nested square.
+class _ComposerSendButton extends StatelessWidget {
+  const _ComposerSendButton({
+    required this.canSend,
+    required this.canCancel,
+    required this.busy,
+    required this.onTap,
+    required this.tooltip,
+  });
+
+  final bool canSend;
+  final bool canCancel;
+  final bool busy;
+  final VoidCallback? onTap;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return LicoIconButton(
+      key: const Key('agent-conversation-composer-send'),
+      tooltip: tooltip,
+      onPressed: onTap,
+      size: LicoIconButtonSize.medium,
+      shape: LicoIconButtonShape.circle,
+      tone: LicoIconButtonTone.brand,
+      icon: canCancel
+          ? const Icon(Icons.stop_rounded)
+          : busy
+          ? LicoSpinningRefreshIcon(
+              size: 15,
+              strokeWidth: 1.8,
+              color: canSend || canCancel
+                  ? colors.textOnPrimary
+                  : colors.textMuted,
+            )
+          : const Icon(Icons.arrow_upward_rounded),
+    );
+  }
+}
+
+class InactiveRuntimeMessageComposer extends StatelessWidget {
+  const InactiveRuntimeMessageComposer({super.key, required this.targetLabel});
+
+  final String targetLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: AppleGlassSurface(
+              borderRadius: BorderRadius.circular(LicoRadius.composerField),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                child: Text(
+                  strings.messageTarget(targetLabel),
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: colors.textDisabled,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

@@ -1,0 +1,176 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = path.resolve(fileURLToPath(new URL("../../..", import.meta.url)));
+
+const pairs = Object.freeze([
+  ["CONTRIBUTING.md", "CONTRIBUTING.zh-CN.md"],
+  ["SECURITY.md", "SECURITY.zh-CN.md"],
+  ["docs/RUNBOOK.md", "docs/RUNBOOK.zh-CN.md"],
+  ["docs/functionality/USER-GUIDE.md", "docs/functionality/USER-GUIDE.zh-CN.md"],
+  ["docs/architecture/README.md", "docs/architecture/README.zh-CN.md"],
+  ["docs/COMPATIBILITY.md", "docs/COMPATIBILITY.zh-CN.md"],
+]);
+
+const guidePaths = Object.freeze([
+  ...pairs.flat(),
+  "AGENTS.md",
+  "docs/CLOSURE.md",
+  "tools/development/workflows/README.md",
+]);
+
+async function read(relativePath) {
+  return fs.readFile(path.join(repoRoot, relativePath), "utf8");
+}
+
+function compact(value) {
+  return value.replace(/\s+/gu, " ");
+}
+
+test("public client documents keep matching English and Chinese entry points", async () => {
+  for (const [englishPath, chinesePath] of pairs) {
+    const [english, chinese] = await Promise.all([read(englishPath), read(chinesePath)]);
+    assert.match(english, new RegExp(chinesePath.split("/").at(-1).replace(".", "\\."), "u"));
+    assert.match(chinese, new RegExp(englishPath.split("/").at(-1).replace(".", "\\."), "u"));
+  }
+});
+
+test("public client document links resolve inside the repository", async () => {
+  for (const relativePath of guidePaths) {
+    const source = await read(relativePath);
+    for (const match of source.matchAll(/\[[^\]]+\]\(([^)]+)\)/gu)) {
+      const target = match[1].split("#", 1)[0];
+      if (target.length === 0 || /^[a-z][a-z0-9+.-]*:/iu.test(target)) continue;
+      const resolved = path.resolve(repoRoot, path.dirname(relativePath), target);
+      await assert.doesNotReject(fs.access(resolved), `${relativePath} has a missing link`);
+    }
+  }
+});
+
+test("public product language keeps the local-first and approved encrypted-peer boundary", async () => {
+  const [guide, architecture, security, chineseGuide] = await Promise.all([
+    read("docs/functionality/USER-GUIDE.md"),
+    read("docs/architecture/README.md"),
+    read("SECURITY.md"),
+    read("docs/functionality/USER-GUIDE.zh-CN.md"),
+  ]);
+
+  assert.match(compact(guide), /Approve that one transfer/u);
+  assert.match(compact(guide), /Changing the peer or content requires a new approval/u);
+  assert.match(compact(architecture), /sender encrypts before network I\/O/u);
+  assert.match(compact(security), /relay is untrusted/u);
+  assert.match(compact(security), /approved external MCP request is a different boundary/u);
+  assert.match(compact(chineseGuide), /只批准这一次传输/u);
+  assert.match(compact(chineseGuide), /更换目标或修改内容后，必须重新确认/u);
+});
+
+test("optional collaboration has an independent trust root and manual signed runner boundary", async () => {
+  const [
+    guide,
+    architecture,
+    security,
+    chineseGuide,
+    chineseArchitecture,
+    chineseSecurity,
+  ] = await Promise.all([
+    read("docs/functionality/USER-GUIDE.md"),
+    read("docs/architecture/README.md"),
+    read("SECURITY.md"),
+    read("docs/functionality/USER-GUIDE.zh-CN.md"),
+    read("docs/architecture/README.zh-CN.md"),
+    read("SECURITY.zh-CN.md"),
+  ]);
+
+  assert.match(compact(guide), /Installation or enablement never grants continuing transfer permission/u);
+  assert.match(compact(guide), /Assembly does not start the server automatically/u);
+  assert.match(compact(architecture), /absent from default startup and navigation/u);
+  assert.match(compact(architecture), /separate action.*never a trust root/u);
+  assert.match(compact(architecture), /fixed signed external runner on loopback/u);
+  assert.match(compact(security), /Plugin installation, enablement, startup, schedules, and agent requests never/u);
+  assert.match(compact(security), /signing key is imported independently of the package download/u);
+  assert.match(compact(chineseGuide), /组装不会自动启动服务端/u);
+  assert.match(compact(chineseArchitecture), /默认启动和\s*导航不会加载/u);
+  assert.match(compact(chineseArchitecture), /通过独立操作导入可信签名公钥/u);
+  assert.match(compact(chineseSecurity), /普通客户端状态只能作为投影/u);
+});
+
+test("MCP external effects require fresh user presence and a one-shot preview claim", async () => {
+  const [guide, architecture, security, chineseGuide, chineseArchitecture, chineseSecurity] =
+    await Promise.all([
+      read("docs/functionality/USER-GUIDE.md"),
+      read("docs/architecture/README.md"),
+      read("SECURITY.md"),
+      read("docs/functionality/USER-GUIDE.zh-CN.md"),
+      read("docs/architecture/README.zh-CN.md"),
+      read("SECURITY.zh-CN.md"),
+    ]);
+
+  assert.match(compact(guide), /bridge first creates a non-transmitting preview/u);
+  assert.match(compact(guide), /matching preview can be claimed exactly once/u);
+  assert.match(compact(guide), /If protected platform authentication is unavailable, external transfer remains disabled/u);
+  assert.match(compact(architecture), /bridge may stage an exact preview, but it performs no exchange and cannot approve it/u);
+  assert.match(compact(architecture), /requests fresh platform user presence for the canonical digest/u);
+  assert.match(compact(architecture), /atomically claims the matching short-lived preview exactly once/u);
+  assert.match(compact(architecture), /Caller-supplied flags or ordinary state files are not proof of approval/u);
+  assert.match(compact(security), /writable state file is not approval/u);
+  assert.match(compact(security), /digest binds the direction, destination, purpose, protocol revision, session, and exact request body/u);
+  assert.match(compact(chineseGuide), /bridge 会\s*先创建一份不发起传输的预览/u);
+  assert.match(compact(chineseArchitecture), /调用方参数和普通状态文件都\s*不能证明用户已经批准/u);
+  assert.match(compact(chineseArchitecture), /原生命令随后针对规范\s*摘要请求一次新的平台用户在场确认/u);
+  assert.match(compact(chineseSecurity), /平台无法提供\s*用户在场保护时，对外传输保持禁用/u);
+  for (const source of [guide, architecture, security, chineseGuide, chineseArchitecture, chineseSecurity]) {
+    assert.doesNotMatch(compact(source), /authenticated client broker|native broker|客户端授权代理|原生授权代理/u);
+  }
+});
+
+test("contributing documents preserve the train and delegate post-release publication", async () => {
+  const [english, chinese] = await Promise.all([
+    read("CONTRIBUTING.md"),
+    read("CONTRIBUTING.zh-CN.md"),
+  ]);
+  const englishCompact = compact(english);
+  const chineseCompact = compact(chinese);
+
+  assert.match(englishCompact, /only integration trunk/u);
+  assert.match(englishCompact, /exact accepted `origin\/release` source/u);
+  assert.match(englishCompact, /npm run client:release:macos/u);
+  assert.match(englishCompact, /never creates a source candidate/u);
+
+  assert.match(chineseCompact, /唯一的集成主干/u);
+  assert.match(chineseCompact, /精确接受的 `origin\/release`/u);
+  assert.match(chineseCompact, /不会创建源码候选/u);
+});
+
+test("developer guides reference resolvable commands and the report sources", async () => {
+  const packageJson = JSON.parse(await read("package.json"));
+  const scripts = new Set(Object.keys(packageJson.scripts ?? {}));
+  const guides = [
+    "AGENTS.md",
+    "docs/RUNBOOK.md",
+    "docs/RUNBOOK.zh-CN.md",
+    "docs/CLOSURE.md",
+    "CONTRIBUTING.md",
+    "CONTRIBUTING.zh-CN.md",
+    "tools/development/workflows/README.md",
+  ];
+  for (const relativePath of guides) {
+    const source = await read(relativePath);
+    for (const match of source.matchAll(/npm run ([a-z0-9][a-z0-9:._-]*)/gu)) {
+      assert.ok(
+        scripts.has(match[1]),
+        `${relativePath} references unknown script npm run ${match[1]}`,
+      );
+    }
+  }
+  const planCommand = "node tools/development/reports.mjs --better-plan <local-source>";
+  for (const relativePath of ["AGENTS.md", "docs/RUNBOOK.md", "CONTRIBUTING.md"]) {
+    assert.ok(
+      compact(await read(relativePath)).includes(planCommand),
+      `${relativePath} documents the plan page command`,
+    );
+  }
+  await assert.doesNotReject(fs.access(path.join(repoRoot, "tools/development/reports.mjs")));
+});

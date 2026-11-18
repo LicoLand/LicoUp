@@ -1,0 +1,384 @@
+# LicoUp Client Functionality
+
+## Metadata
+
+- Last updated: 2026-07-30
+- Status: Implemented capability overview
+- Scope: Desktop, Devices, Rust sidecar, ACP, MCP, platform adapters, and local-agent workflows.
+- Staleness check: Reconciled with `PRODUCT.md`, `docs/STATUS.md`, client application boundaries, the native sidecar, packaging manifests, target adapters, Devices contracts, and module-scoped regression catalog on 2026-07-30.
+
+## Product Boundary
+
+[`PRODUCT.md`](../../PRODUCT.md) owns the public product boundary. Detailed
+behavior is owned by the Rust and Flutter modules, public schemas, catalogs, and
+regression entries named below; this document is an acceptance-oriented
+projection of those authorities.
+
+LicoUp is a local-first client. Flutter owns presentation and application
+coordination; Rust owns bounded local execution, protocol adaptation, local state,
+and cryptographic substrate.
+
+Built-in capabilities are limited to:
+
+1. a lightweight Rust local task queue;
+2. ACP adaptation for local agents and encrypted remote relay;
+3. MCP request and response adaptation;
+4. macOS, Windows, and Ubuntu platform adaptation (the Android and iOS implementations live in the sibling LicoUp-Android and LicoUp-iOS repositories);
+5. the six product scenarios defined below.
+
+Capabilities outside this scope are not built into the client, registered as
+commands, or shown in navigation. The default UI destinations are **Conversations**, **Agent Center**, **Statistics**,
+**Model Gateway**, **Mobile Pairing**, and **Settings**. Agent detail retains
+Plugin and Skill management. Mobile Pairing includes Chat Channels.
+[Design system](DESIGN-SYSTEM.md) owns navigation presentation, theme styles,
+fonts, motion, component styling and independent loading behavior.
+
+## Mandatory External-Transfer Contract
+
+Local files, conversation content, configuration, diagnostics, paths, device
+facts, agent history, and usage records remain on the current device by default.
+An operation that transfers any of that information outside the device is valid
+only when all of the following hold:
+
+- the user initiated or directly approved this single operation;
+- the UI shows destination, purpose, exact data/file scope, and affected agents;
+- the user can cancel until commit;
+- approval is bound to operation kind, destination, scope, and content digest;
+- any changed, missing, cancelled, expired, or unverifiable approval fails closed;
+- startup, plugin enablement, schedules, prior approvals, and agent requests never
+  imply consent.
+
+Pressing Send for one explicitly addressed end-to-end encrypted message authorizes
+only that message and recipient. Background or agent-originated file movement
+requires a separate direct approval for each file.
+
+## Independently Acceptable Architecture Boundaries
+
+| Boundary | Ownership and dependency rule |
+| --- | --- |
+| Flutter contracts | Defines ports, values, and cross-layer messages without depending on application, frontend, backend, or platform implementations. |
+| Flutter application | Owns use cases and narrow controllers; one feature must not reach another feature's storage or UI implementation. |
+| Flutter frontend | Consumes named presentation Bindings and contracts, and contains no application, backend, native process, filesystem, network, or protocol implementation. |
+| Flutter platform/backend | Implements narrow contracts and returns business projections; explicit local execution inspection uses the dedicated record contract. |
+| Rust local queue | Owns bounded admission, FIFO handoff, backpressure, and single-consumer ownership; it contains no UI or feature-specific policy. |
+| Rust ACP adapter | Owns ACP framing and capability translation; per-agent semantics stay in target-specific leaves. |
+| Rust MCP adapter | Owns strict bounded JSON-RPC request/notification/response codecs plus a short-lived one-shot direction/destination/purpose/digest-bound transfer gate. |
+| Platform adapters | Own OS discovery, secure storage, authorization, paths, process launch, and packaging behind platform-neutral ports. |
+| Devices | Owns desktop-to-desktop enroll, pairing, session custody, and protected message exchange on the client-owned `licoarc-client` line, plus private-key/Provider custody, user trust and approval, and local effects. |
+| Lico Arc Protocol Line | Owns stable wire-observable Pairwise Protection, Generic Message, Reliable Exchange, negotiation, and Transport Profile semantics. LicoUp executes one pinned line; it does not redefine one. |
+
+The architecture gate rejects cross-layer reverse dependencies, duplicate protocol
+implementations, unbounded lifecycle resources, and feature behavior hidden in a
+shared facade.
+
+## Foundation F-01 — Lightweight Rust Task Queue
+
+| Item | Contract |
+| --- | --- |
+| Objective | Schedule short-lived local client work without a general server queue. |
+| Input | A typed in-memory task submitted through a cloneable producer. |
+| Processing | A positive fixed capacity applies backpressure; multiple producers feed one exclusive FIFO consumer without an async-runtime dependency. |
+| Output | Ownership of the accepted task moves to the worker; rejected tasks are returned intact to the caller. |
+| Rejection | Zero capacity, full non-blocking admission, worker shutdown, or channel disconnection fails closed. |
+| Persistence | None. The lightweight queue stores no durable task record or copied user content. |
+| Regression | Rust FIFO/depth, full-queue ownership, cloned-producer, disconnect, and invalid-capacity unit tests. |
+
+## Foundation F-02 — ACP Adaptation
+
+| Item | Contract |
+| --- | --- |
+| Objective | Use ACP for supported local-agent conversations and carry ACP-derived application messages inside protected client session payloads. |
+| Processing | Parse and emit bounded frames, preserve request/session correlation, order events, propagate cancellation, and map capabilities without target-specific branching in the shared codec. |
+| Rejection | Oversized, malformed, out-of-order, unknown-session, untrusted, or plaintext session payloads fail closed. |
+| Regression | Codec vectors, malformed-frame property tests, exact-session conversation parity, cancellation, and Devices session ACP tests. |
+
+## Foundation F-03 — MCP Adaptation
+
+| Item | Contract |
+| --- | --- |
+| Objective | Let LicoUp issue MCP requests or forward MCP responses through a narrow protocol adapter. |
+| Processing | Validate JSON-RPC/MCP shape, correlate requests, bound payloads, sanitize errors, and bind any external request or response transfer to a one-shot approval over direction, destination, and exact message digest. |
+| Rejection | Invalid id, malformed response, changed destination or message, missing/cancelled approval, replay, or payload overflow fails closed. |
+| Regression | MCP codec/ID tests, bounded stdio/HTTP bodies, request-send and response-forward direction/destination/purpose/digest binding, cancellation, expiry, replay, mutation, and approval negative tests. |
+
+## Foundation F-04 — Platform Adaptation
+
+| Platform | Required acceptance |
+| --- | --- |
+| macOS | App discovery, executable launch, sandbox/path boundaries, Keychain/LocalAuthentication, packaging, build, and launch. |
+| Windows | Registry/application discovery, process/path boundaries, owner-only secret storage, x64/arm64 packaging, build, and launch. |
+| Ubuntu | Desktop/package/binary discovery, process/path boundaries, Secret Service or memory-only custody, package build, and launch. |
+| Android/iOS | Implemented in the sibling LicoUp-Android and LicoUp-iOS repositories; secure storage, biometric authorization, lifecycle-safe sessions, build, install, and launch remain their acceptance boundary. |
+
+Platform code may implement OS mechanics only. ACP, MCP, queue semantics, target
+business rules, and encryption algorithms remain platform-neutral.
+
+## Scenario S-01 — Desktop Agent Discovery
+
+The client probes application stores, package managers, executable search paths,
+and other common platform-owned application locations asynchronously with bounded
+concurrency. Results are normalized and deduplicated by stable target identity,
+then registered in a local cache with configuration references needed for fast
+subsequent launch.
+
+Discovery snapshots are restored only for IDs in the current native target
+registry. The local read-only `targets catalog` command projects that registry,
+including registered custom CLI lanes, without discovering processes or virtual
+machines. Retired adapters cannot reappear from old snapshots. If the registry
+is unavailable, the client skips the acceleration snapshot and preserves its
+stored data; existing manual and virtual-machine boundaries still apply.
+
+On macOS, the accessible-environment scan also enumerates running local OrbStack
+machines and checks a fixed set of documented or common OpenClaw and Hermes
+executable locations. Guest probes have bounded time, output, machine count, and
+concurrency. They read no configuration or conversation store. A validated
+automatic VM route is transient and is never written to the discovery cache.
+
+Discovery never sends the inventory, paths, versions, configuration, or probe
+output outside the device. A timeout or permission failure yields a bounded source
+status and does not invalidate successful sources.
+
+Regression: per-source discovery fixtures, concurrency-bound tests, canonical
+deduplication, stale-cache refresh, permission denial, cancellation, and platform
+adapter contract tests.
+
+## Scenario S-02 — Desktop Agent Conversations
+
+The client creates and continues local native-agent conversations. It also
+accepts an automatically discovered or explicitly configured OpenClaw or Hermes
+runtime in a user-owned VM.
+An adapter first uses an official protocol, SDK, or structured command surface.
+Exact native continuation must preserve the native session identity, effective
+model and permission settings, event order, final response, observable effects,
+and error semantics.
+
+The VM path uses the system OpenSSH client as a bounded native-protocol stdio
+transport.
+The target shape contains only host, optional port/user, guest executable, and
+absolute guest working directory; passwords, private keys, and command fragments
+are rejected. Strict host verification and noninteractive system authentication
+are required. The exact SSH destination remains visible in the conversation
+header. OpenClaw uses ACP. Automatically discovered Hermes uses ACP when its
+optional package is available, otherwise its official TUI Gateway JSON-RPC.
+History uses the selected protocol's session list/load operations rather than
+guest filesystem access, and local MCP server descriptors are not forwarded
+into the VM.
+
+The local execution viewer follows the exact-dispatch contract in
+[Local execution inspection](../architecture/CONVERSATION-DOMAIN.md#13-local-execution-inspection).
+Its presentation and first-reply waiting behavior are owned by the
+[design system](DESIGN-SYSTEM.md#conversation-loading-and-hierarchy).
+
+When official mid-turn injection is unavailable, LicoUp may stream the active
+turn for display and start the next user message only after the native reply is
+complete. It must not emulate mid-turn injection by editing private databases,
+scraping a terminal UI, or starting a replacement conversation.
+
+The packaged adapter set is Antigravity, Claude Code, Codex, Cursor, DeepSeek
+Harness, GitHub Copilot, Hermes Agent, Kilo Code, Kimi Code, Lico Agent,
+OpenClaw, OpenCode, and Pi Agent.
+Adapter readiness remains a release-evidence claim and is disclosed separately
+from source runtime resolution. A target is usable only when the client resolves
+its packaged driver plus a valid local executable or discovered/explicit VM
+connection; unresolvable transports fail closed without blocking unrelated
+client functions.
+
+Regression: target-specific new/continue tests, both native-to-Arc and
+Arc-to-native continuation, VM connection validation and private-stdin binding,
+ACP/Gateway session list/load, SSH command confinement, stream ordering, cancellation,
+restart/cleanup, safe rendering, privacy projection, and release-UI parity
+reducer.
+
+## Scenario S-03 — Desktop Skill Management
+
+The client discovers skills already present in each local agent's skill root,
+displays their local metadata, and aggregates invocation counts by time window.
+It has no skill download, installation, update, rollback, or cross-device skill
+synchronization channel.
+
+Removal is an explicit local action bound to the selected skill identifier, exact
+catalog path, and current package digest. The selected directory is moved to the
+operating system Trash rather than permanently deleted. Path escape, symlink
+escape, a changed digest, or a non-catalog target fails closed.
+
+Regression: local list/get/hide, exact-path Trash confirmation, digest and path
+negative cases, refresh visibility, and time-window usage aggregation.
+
+## Scenario S-04 — Desktop Conversation Management and Backup
+
+The client indexes supported agents' native conversations read-only, filters them,
+and backs up all conversations or keyword-matched conversations to a directory
+selected by the user. Each keyword remains an independent selection criterion;
+the client does not merge unrelated project identities.
+
+Backup writes locally and never changes native history. The preview shows agents,
+query, destination, item count, and conflict policy. Path escape, inaccessible
+source, unsupported format, changed selection, cancellation, or incomplete
+verification fails closed without reporting success.
+
+Regression: all/keyword selection, exact keyword boundaries, source adapters,
+deterministic index generation, local destination boundary, conflict handling,
+cancellation, and round-trip restore-read validation where supported.
+
+## Scenario S-05 — Desktop Token Usage
+
+Usage reporting defaults to the latest thirty days and supports a manually chosen
+time window. Reports aggregate locally recorded token counts by agent or model
+from supported agents' authoritative local histories, with explicit source and
+deduplication boundaries. The Workflow peer view consumes the current native
+delivery ledger projection: one Plan summary expands to Task and dispatch rows,
+with the named main conversation kept separate from subordinate totals. It
+shows numeric prompt, cached-input, completion, total, and exact-coverage facts
+only.
+
+The Rust [global model registry](../architecture/MODEL-REGISTRY.md) owns model
+identity across source applications, reasoning efforts and speed modes. Fresh
+and retained reports use the same directory; each canonical `modelTokenUsage`
+entry retains its source's numeric effort and speed breakdown. An explicit
+refresh updates the public model directory before rescanning local usage.
+Missing effort has no placeholder row and never reduces the source total.
+
+Completed daily rollups remain durable accounting facts when their source files
+are changed or removed. Cache schema upgrades migrate those facts in place;
+reparsing available files is not permission to replace sealed history. Missing
+historical request controls stay absent. Recovery binds a selected accounting
+snapshot to its exact local scope and closed date window, without adding or
+taking maxima across histories that no longer share source-level identities.
+
+Retained scan reports are rolling snapshots of those accounting facts. Retention
+is bounded by both report count and the encoded collection size. It removes the
+oldest snapshots first and keeps the newest report intact; it never removes
+daily ledger facts. A report that cannot fit by itself produces a persistence
+error and leaves the previous collection intact.
+
+The [design system](DESIGN-SYSTEM.md) owns the Agent and model palettes and the
+expandable source-share presentation. The waveform shows up to ten series;
+the share list keeps its fifteen-row limit, with one Others row for unattributed
+usage and any overflow. Source disclosure never changes the selected window or
+the underlying counts.
+
+LicoUp is the scheduling authority and Acativa is the route-selection
+authority. A raw native conversation location is handed to a selected adapter
+privately; it is never part of the desktop report. The native ledger keeps active
+workflows and the newest twenty terminal rollups, while the client adds no second
+workflow store or token arithmetic.
+
+No raw prompt, response, account, local path, native identifier, summary,
+compaction detail, cache control, or tool payload enters the report or UI.
+Missing history, timezone changes, overlapping records, counter resets, or
+unknown model attribution remain explicit rather than silently fabricated. An
+empty workflow collection has a localized empty state while Agent and Model
+views remain available.
+
+Cursor's own dashboard is the only billing authority for Cursor usage. LicoUp
+reads the account's filtered usage events through the same in-memory session as
+the quota ring, keeps only per-day, per-model token and request aggregates, and
+never projects local bubble counters, context-window meters, conversation
+identifiers, or account identity into the report. Requests whose payload carries
+no token fields stay request counts instead of estimated tokens, paging is
+reconciled against the provider's own event count, and an unusable session fails
+closed with a sanitized warning. The roster quota card keeps plan usage, the
+Auto/API sub-quotas, and the on-demand budget distinct, showing used/limit
+amounts and the billing-cycle reset.
+
+Regression: agent/model dimensions, default and custom windows, timezone
+transitions, deduplication, cache invalidation, redaction, and empty/partial local
+source handling.
+
+DeepSeek Harness usage comes from provider-reported samples in its durable
+`assistant/message` and `assistant/attempt` events, including billed retries.
+Discovery uses `DSH_HOME/sessions` (default `~/.dsh/sessions`) or an explicitly
+selected history root. One scan reuses one lazily started metadata reader and
+the installed official read-only persistence API; it loads no profile, current
+provider configuration, or credentials. The API decodes plaintext and Zstandard
+generations in memory and supplies the exact fork-inherited prefix to exclude.
+Only the highest canonical generation represents each session. Native source
+fingerprints skip unchanged sessions, and daily snapshot replacement keeps
+generation upgrades and repeated refreshes from recounting consumption.
+
+Harness input is uncached input; reported cache reads and writes belong in
+prompt totals. Reasoning is already included in output and is not added again.
+The response's actual model and provider take precedence, while effort comes
+only from its matching recorded request header or materialized adapter defaults.
+The public session meter preserves reported disjoint input/output buckets when
+full-call totals are absent, using its documented zero contribution for absent
+optional cache buckets. Supplied invalid counts or inconsistent totals remain
+unavailable requests; context pressure and estimated composition never become
+usage. Initial extraction
+reads the complete selected session histories once, with work and byte counts
+recorded by the existing background scan cache. A reader failure reports a
+sanitized stage. Historical usage support does not imply SDK transcript
+readback or a live `usageStatus` control.
+
+## Scenario S-06 — Devices
+
+Desktop clients enroll device identities, pair through an explicit offer/claim
+exchange, and exchange protected session messages. The station transport receives
+only bounded routing metadata and opaque ciphertext. A compromised relay must be
+unable to decrypt messages, commands, or results.
+
+The Rust `devices` domain owns session custody and protocol state on the
+client-owned `licoarc-client` line; platform code provides authorization and
+secret custody but does not reimplement cryptographic algorithms. Replay, wrong
+recipient, revoked endpoint, stale key, modified ciphertext, unapproved local
+effect, and plaintext relay attempts fail closed.
+
+Lico Arc owns the wire-observable protocol semantics; LicoUp retains private
+keys, Provider configuration, plaintext, history, backups, user trust, approval,
+and local-effect handling.
+
+The direct client-owned Lico Arc candidate adapter has completed one bounded
+exchange between two freshly initialized endpoints through an actual BadTower
+candidate, as recorded in [`../STATUS.md`](../STATUS.md) and the
+[station-adapter contract](../protocols/licoarc-station-adapter.md). That local
+candidate evidence does not establish stable neutral-station support,
+physical-device acceptance, release, or hosted operation.
+
+Regression: Devices session and custody tests, cross-platform bridge tests,
+trust and revocation UX, wrong-recipient/tamper/replay controls, opaque-relay
+conformance, message/result round trips, and physical-device verification when
+authorized.
+
+## Regression Closure
+
+`tools/regression/client-module-catalog.mjs` is the authority for independently
+acceptable modules and their dedicated commands. During development:
+
+```bash
+npm run client:regression:list
+npm run client:regression -- --changed-from <ref> --dry-run
+npm run client:regression -- --module <module-id>
+npm run client:regression:frontend
+npm run client:regression:backend
+npm run client:regression:integration
+```
+
+The maintained runner executes shared foundation checks first, overlaps the
+frontend and backend collections, then runs interface integration and core
+scenarios. After the core is terminal, it probes every platform and Agent
+entry independently and runs all locally eligible compatibility targets with
+bounded concurrency. A missing optional capability is reported as
+`unverified`. It does not block unrelated evidence or become a pass.
+Agent validation has one shared inventory/schema contract and one independent
+static batch per Agent. A failed Agent batch blocks only that Agent's live
+branch; the other Agent branches continue.
+
+Complete selections batch compatible Node test files and Flutter paths
+before scheduling. Flutter test workers and Node test-file processes remain
+bounded by the central resource pools; the Cargo lanes run in the LicoUp-CLI
+repository, which owns the Rust workspace. Aggregated Node tests report only
+failed numeric input indexes, which the parent maps to module IDs without
+retaining paths, test names, stacks, or raw output; retries can therefore
+select only failed members. The privacy-safe report records per-command wall
+time, measured/unavailable process-resource fields, anonymous
+toolchain-native statistics, and the compatibility matrix. Use
+`--retry-report` to redispatch only failed or blocked evidence.
+
+Run the smallest affected module set first. After all changed modules and
+integration edges pass, run `npm run client:gate:source` exactly once and run
+only the affected Flutter or dependency lane.
+Release policy is not a changed-path regression lane; it runs only on the
+`stable` → `release` promotion edge. The regression lanes are independent
+and may run in parallel. The source policy never
+installs platform toolchains, and the commit gate never builds or publishes
+every platform.

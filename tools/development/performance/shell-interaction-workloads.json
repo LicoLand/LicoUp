@@ -1,0 +1,144 @@
+{
+  "schema": "licoup-shell-interaction-workloads.v1",
+  "workload": "shell-ordinary-interactions",
+  "conditions": {
+    "host": "the single local development host that recorded the measurements",
+    "clock": "virtual widget clock",
+    "claim": "counted work only: no latency, frame-duration or frame-rate claim",
+    "engineFrames": "real engine frame phases stay in the profile harness: npm run client:test:ui -- --profile --device <local-target>",
+    "evidence": [
+      "apps/desktop/test/presentation/shell_performance_seams/interaction_navigation_switch_test.dart",
+      "apps/desktop/test/presentation/shell_performance_seams/interaction_navigation_reselect_test.dart",
+      "apps/desktop/test/presentation/shell_performance_seams/interaction_navigation_return_test.dart",
+      "apps/desktop/test/presentation/shell_performance_seams/interaction_appearance_change_test.dart",
+      "apps/desktop/test/presentation/shell_performance_seams/interaction_layout_change_test.dart"
+    ]
+  },
+  "interactions": [
+    {
+      "id": "navigation-switch",
+      "action": "select another shell destination",
+      "measured": {
+        "acceptedProjections": 1,
+        "frameConsumedProjections": 1,
+        "consumedFrames": 1,
+        "rendererIntents": 1,
+        "rebuilds": 443
+      },
+      "limits": {
+        "acceptedProjections": 1,
+        "frameConsumedProjections": 1,
+        "consumedFrames": 1,
+        "rendererIntents": 2,
+        "rebuilds": 700
+      },
+      "regions": [
+        {
+          "widget": "ProjectionBuilder<NavigationProjection",
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    {
+      "id": "navigation-reselect",
+      "action": "select the shell destination already shown",
+      "measured": {
+        "acceptedProjections": 0,
+        "frameConsumedProjections": 0,
+        "consumedFrames": 0,
+        "rendererIntents": 1,
+        "rebuilds": 127
+      },
+      "limits": {
+        "acceptedProjections": 0,
+        "frameConsumedProjections": 0,
+        "consumedFrames": 0,
+        "rendererIntents": 2,
+        "rebuilds": 220
+      },
+      "regions": [
+        {
+          "widget": "ProjectionBuilder<",
+          "min": 0,
+          "max": 0
+        }
+      ]
+    },
+    {
+      "id": "navigation-return",
+      "action": "return to the first shell destination",
+      "measured": {
+        "acceptedProjections": 1,
+        "frameConsumedProjections": 1,
+        "consumedFrames": 1,
+        "rendererIntents": 1,
+        "rebuilds": 242
+      },
+      "limits": {
+        "acceptedProjections": 1,
+        "frameConsumedProjections": 1,
+        "consumedFrames": 1,
+        "rendererIntents": 2,
+        "rebuilds": 420
+      },
+      "regions": [
+        {
+          "widget": "ProjectionBuilder<NavigationProjection",
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    {
+      "id": "appearance-change",
+      "action": "switch the appearance preset while the shell is mounted",
+      "measured": {
+        "acceptedProjections": 1,
+        "frameConsumedProjections": 1,
+        "consumedFrames": 1,
+        "rendererIntents": 0,
+        "rebuilds": 393
+      },
+      "limits": {
+        "acceptedProjections": 1,
+        "frameConsumedProjections": 1,
+        "consumedFrames": 1,
+        "rendererIntents": 1,
+        "rebuilds": 620
+      },
+      "regions": [
+        {
+          "widget": "ProjectionBuilder<AppearanceProjection",
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    {
+      "id": "layout-change",
+      "action": "select the other built-in layout profile",
+      "measured": {
+        "acceptedProjections": 1,
+        "frameConsumedProjections": 1,
+        "consumedFrames": 1,
+        "rendererIntents": 0,
+        "rebuilds": 243
+      },
+      "limits": {
+        "acceptedProjections": 1,
+        "frameConsumedProjections": 1,
+        "consumedFrames": 1,
+        "rendererIntents": 1,
+        "rebuilds": 420
+      },
+      "regions": [
+        {
+          "widget": "ProjectionBuilder<LayoutProjection",
+          "min": 1,
+          "max": 1
+        }
+      ]
+    }
+  ]
+}

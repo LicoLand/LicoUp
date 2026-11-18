@@ -1,0 +1,792 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+
+import 'package:licoup/src/contracts/agent_usage_models.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_pane_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_chart_controls.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_formatters.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_summary_widgets.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_timeline_data.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_usage_wave_overview.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/continuous_stroke.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_radius.dart';
+
+export 'package:licoup/src/frontend/features/agents/ui/agent_usage_wave_overview.dart';
+
+class AgentUsageCharts extends StatefulWidget {
+  const AgentUsageCharts({
+    super.key,
+    required this.report,
+    required this.detectedAgentIds,
+    required this.windowDays,
+    required this.windowBusy,
+    required this.onWindowChanged,
+  });
+
+  final AgentUsageReport? report;
+  final Set<String> detectedAgentIds;
+  final int windowDays;
+  final bool windowBusy;
+  final ValueChanged<int> onWindowChanged;
+
+  @override
+  State<AgentUsageCharts> createState() => _AgentUsageChartsState();
+}
+
+final class _AgentUsageChartsState extends State<AgentUsageCharts> {
+  AgentUsageChartGrouping _grouping = AgentUsageChartGrouping.agent;
+  AgentUsageReport? _cachedReport;
+  Set<String> _cachedDetected = const {};
+  AgentUsageChartGrouping? _cachedGrouping;
+  int? _cachedWindowDays;
+  List<AgentUsageAgentSummary> _agents = const [];
+  List<_UsageSourceTotal> _sourceTotals = const [];
+  int _totalTokens = 0;
+  AgentUsageTimelineData? _timeline;
+
+  void _updateChartData(AgentUsageReport report) {
+    final reportChanged =
+        !identical(_cachedReport, report) ||
+        !setEquals(_cachedDetected, widget.detectedAgentIds);
+    if (reportChanged) {
+      _cachedReport = report;
+      _cachedDetected = Set.unmodifiable(widget.detectedAgentIds);
+      _agents = [
+        for (final agent in report.agents)
+          if (shouldShowAgentUsage(agent, widget.detectedAgentIds)) agent,
+      ]..sort((a, b) => b.totalTokens.compareTo(a.totalTokens));
+      _totalTokens = _agents.fold(
+        0,
+        (total, agent) => total + agent.totalTokens,
+      );
+      _sourceTotals = _aggregateSourceTotals(_agents);
+    }
+    final grouping = _grouping == AgentUsageChartGrouping.workflow
+        ? AgentUsageChartGrouping.agent
+        : _grouping;
+    if (reportChanged ||
+        _cachedGrouping != grouping ||
+        _cachedWindowDays != widget.windowDays) {
+      _cachedGrouping = grouping;
+      _cachedWindowDays = widget.windowDays;
+      _timeline = buildAgentUsageTimelineData(
+        report,
+        grouping,
+        widget.detectedAgentIds,
+        displayDayCount: widget.windowDays,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final report = widget.report;
+    if (report == null) return const AgentUsageEmptyState();
+
+    _updateChartData(report);
+    final totalTokens = _totalTokens;
+    final sourceTotals = _sourceTotals;
+    final timeline = _timeline!;
+    // A source without a native adapter is already shown as Unavailable in
+    // its source row. It is not a second report-wide warning.
+    final warnings = report.warnings
+        .where((warning) => warning != 'native_usage_source_unavailable')
+        .map((warning) => agentUsageWarningLabel(warning, strings))
+        .toSet();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_grouping == AgentUsageChartGrouping.workflow)
+          AgentUsageWorkflowSection(
+            workflows: report.workflows,
+            summary: report.workflowSummary,
+            onGroupingChanged: (grouping) {
+              setState(() => _grouping = grouping);
+            },
+          )
+        else ...[
+          AgentUsageWaveOverview(
+            grouping: _grouping,
+            timeline: timeline,
+            onGroupingChanged: (grouping) {
+              setState(() => _grouping = grouping);
+            },
+            windowDays: widget.windowDays,
+            windowBusy: widget.windowBusy,
+            onWindowChanged: widget.onWindowChanged,
+          ),
+          const SizedBox(height: 16),
+          Builder(
+            builder: (context) => _buildShareSection(
+              context,
+              sourceTotals: sourceTotals,
+              totalTokens: totalTokens,
+              timeline: timeline,
+            ),
+          ),
+        ],
+        if (warnings.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(
+            warnings.join(' · '),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: context.licoColors.textMuted, fontSize: 12),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildShareSection(
+    BuildContext context, {
+    required List<_UsageSourceTotal> sourceTotals,
+    required int totalTokens,
+    required AgentUsageTimelineData timeline,
+  }) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    final sectionTotal = switch (_grouping) {
+      AgentUsageChartGrouping.agent => totalTokens.toDouble(),
+      AgentUsageChartGrouping.model => timeline.groupTotal,
+      AgentUsageChartGrouping.workflow => 0,
+    };
+    final detailRows = switch (_grouping) {
+      AgentUsageChartGrouping.agent => [
+        for (final source in sourceTotals)
+          AgentUsageBarData(
+            label: source.label,
+            value: source.hasUsage
+                ? formatAgentUsageNumber(source.totalTokens)
+                : strings.unavailable,
+            trailing: source.hasUsage
+                ? formatAgentUsagePercent(source.totalTokens, totalTokens)
+                : '—',
+            fraction: agentUsageShareFraction(source.totalTokens, totalTokens),
+            accent: agentUsageSeriesColor(colors, source.label),
+          ),
+      ],
+      AgentUsageChartGrouping.model => [
+        for (final label in timeline.shareSeriesLabels)
+          AgentUsageBarData(
+            seriesKey: label,
+            label: timeline.displayNameFor(label),
+            value: formatAgentUsageNumber(timeline.shareTotalFor(label)),
+            trailing: formatAgentUsagePercent(
+              timeline.shareTotalFor(label),
+              timeline.groupTotal,
+            ),
+            fraction: agentUsageShareFraction(
+              timeline.shareTotalFor(label),
+              timeline.groupTotal,
+            ),
+            accent: agentUsageSeriesColor(
+              colors,
+              label,
+              grouping: AgentUsageChartGrouping.model,
+              displayName: timeline.displayNameFor(label),
+            ),
+            sources: label == agentUsageOverflowSeriesLabel
+                ? const []
+                : timeline.modelSources[label] ?? const [],
+          ),
+        // Hosted-ledger models with requests but no token fields stay request
+        // counts; nothing is estimated to make them look like token totals.
+        for (final label in timeline.requestOnlyShareLabels)
+          AgentUsageBarData(
+            seriesKey: label,
+            label: timeline.displayNameFor(label),
+            value: strings.agentUsageIncludedRequests(
+              timeline.requestCountFor(label),
+            ),
+            trailing: '—',
+            fraction: 0,
+            accent: agentUsageSeriesColor(
+              colors,
+              label,
+              grouping: AgentUsageChartGrouping.model,
+              displayName: timeline.displayNameFor(label),
+            ),
+            sources: label == agentUsageOverflowSeriesLabel
+                ? const []
+                : timeline.modelSources[label] ?? const [],
+          ),
+      ],
+      AgentUsageChartGrouping.workflow => const <AgentUsageBarData>[],
+    };
+    return AgentUsageBarSection(
+      key: const ValueKey('agent-usage-token-share'),
+      valueHeader: strings.tokenConsumption,
+      rows: [
+        if (detailRows.isNotEmpty && sectionTotal > 0)
+          AgentUsageBarData(
+            label: strings.totalTokens,
+            value: formatAgentUsageNumber(sectionTotal),
+            trailing: '100%',
+            fraction: sectionTotal > 0 ? 1 : 0,
+            accent: Colors.white,
+          ),
+        ...detailRows,
+      ],
+      emptyLabel: switch (_grouping) {
+        AgentUsageChartGrouping.agent => strings.noAgentUsageInLatestReport,
+        AgentUsageChartGrouping.model => strings.noModelUsageInLatestReport,
+        AgentUsageChartGrouping.workflow => strings.noWorkflowUsage,
+      },
+    );
+  }
+}
+
+/// The workflow view projects only topology-neutral Graph run, command,
+/// Membership and checked numeric usage facts.
+class AgentUsageWorkflowSection extends StatefulWidget {
+  const AgentUsageWorkflowSection({
+    super.key,
+    required this.workflows,
+    required this.summary,
+    required this.onGroupingChanged,
+  });
+
+  final List<AgentUsageWorkflow> workflows;
+  final AgentUsageTokenTotals summary;
+  final ValueChanged<AgentUsageChartGrouping> onGroupingChanged;
+
+  @override
+  State<AgentUsageWorkflowSection> createState() =>
+      _AgentUsageWorkflowSectionState();
+}
+
+final class _AgentUsageWorkflowSectionState
+    extends State<AgentUsageWorkflowSection> {
+  final Set<int> _expandedRuns = <int>{};
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final workflows = [...widget.workflows]
+      ..sort((a, b) => b.totalTokens.compareTo(a.totalTokens));
+    final summary = _summaryFor(workflows, widget.summary);
+    final commandCount = workflows.fold<int>(
+      0,
+      (total, workflow) => total + workflow.commands.length,
+    );
+    return Column(
+      key: const ValueKey('agent-usage-workflow-view'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AgentUsagePanelHeader(
+          title: strings.workflowUsage,
+          trailing: [
+            AgentUsageGroupingSwitch(
+              grouping: AgentUsageChartGrouping.workflow,
+              onChanged: widget.onGroupingChanged,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (workflows.isEmpty)
+          Text(
+            strings.noWorkflowUsage,
+            key: const ValueKey('agent-usage-workflow-empty'),
+            style: TextStyle(
+              color: context.licoColors.textMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          )
+        else ...[
+          _WorkflowTotalsHeader(
+            totals: summary,
+            runCount: workflows.length,
+            commandCount: commandCount,
+          ),
+          const SizedBox(height: 16),
+          for (var index = 0; index < workflows.length; index += 1) ...[
+            _WorkflowRunCard(
+              key: ValueKey('agent-usage-workflow-run-$index'),
+              workflow: workflows[index],
+              ordinal: index + 1,
+              expanded: _expandedRuns.contains(index),
+              onToggle: () => setState(() {
+                if (!_expandedRuns.add(index)) _expandedRuns.remove(index);
+              }),
+            ),
+            if (index < workflows.length - 1) const SizedBox(height: 10),
+          ],
+        ],
+      ],
+    );
+  }
+
+  AgentUsageTokenTotals _summaryFor(
+    List<AgentUsageWorkflow> workflows,
+    AgentUsageTokenTotals reported,
+  ) {
+    if (reported.totalTokens > 0 || reported.promptTokens > 0) {
+      return reported;
+    }
+    return workflows.fold<AgentUsageTokenTotals>(
+      const AgentUsageTokenTotals(),
+      (total, workflow) => total + workflow.totals,
+    );
+  }
+}
+
+class _WorkflowTotalsHeader extends StatelessWidget {
+  const _WorkflowTotalsHeader({
+    required this.totals,
+    required this.runCount,
+    required this.commandCount,
+  });
+
+  final AgentUsageTokenTotals totals;
+  final int runCount;
+  final int commandCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final colors = context.licoColors;
+    final recordCount = totals.recordCount;
+    final coveragePercent = (totals.exactCoverage * 100).round();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _WorkflowMetric(
+              label: strings.workflowTotal,
+              value: formatAgentUsageNumber(totals.totalTokens),
+              accent: colors.primary,
+            ),
+            _WorkflowMetric(
+              label: strings.workflowCachedInput,
+              value: formatAgentUsageNumber(totals.cachedInputTokens),
+            ),
+            _WorkflowMetric(
+              label: strings.workflowExactCoverage,
+              value: strings.workflowCoverage(
+                totals.exactCount,
+                recordCount,
+                coveragePercent,
+              ),
+            ),
+            _WorkflowMetric(
+              label: strings.workflowRuns,
+              value: formatAgentUsageNumber(runCount),
+            ),
+            _WorkflowMetric(
+              label: strings.workflowCommands,
+              value: formatAgentUsageNumber(commandCount),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            _WorkflowComponentValue(
+              label: strings.workflowPrompt,
+              value: formatAgentUsageNumber(totals.promptTokens),
+            ),
+            const SizedBox(width: 16),
+            _WorkflowComponentValue(
+              label: strings.workflowCompletion,
+              value: formatAgentUsageNumber(totals.completionTokens),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _WorkflowMetric extends StatelessWidget {
+  const _WorkflowMetric({
+    required this.label,
+    required this.value,
+    this.accent,
+  });
+
+  final String label;
+  final String value;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Container(
+      constraints: const BoxConstraints(minWidth: 122),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: continuousHairlineDecoration(
+        color: (colors.isDark
+            ? LicoPaneGlass.contentInnerCardFill
+            : colors.surfaceLow),
+        borderRadius: BorderRadius.circular(LicoRadius.floating),
+        stroke: colors.line.withAlpha(80),
+        strokeWidth: 0.5,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textMuted, fontSize: 10),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: accent ?? colors.text,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkflowComponentValue extends StatelessWidget {
+  const _WorkflowComponentValue({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$label ',
+          style: TextStyle(color: colors.textMuted, fontSize: 11),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: colors.text,
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _WorkflowRunCard extends StatelessWidget {
+  const _WorkflowRunCard({
+    super.key,
+    required this.workflow,
+    required this.ordinal,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  final AgentUsageWorkflow workflow;
+  final int ordinal;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final colors = context.licoColors;
+    return DecoratedBox(
+      decoration: continuousHairlineDecoration(
+        color:
+            (colors.isDark
+                    ? LicoPaneGlass.contentInnerCardFill
+                    : colors.surfaceLow)
+                .withAlpha(colors.isDark ? 90 : 120),
+        borderRadius: BorderRadius.circular(LicoRadius.card),
+        stroke: colors.line.withAlpha(80),
+        strokeWidth: 0.5,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _WorkflowDisclosureRow(
+            key: const ValueKey('agent-usage-workflow-run-row'),
+            expanded: expanded,
+            onTap: onToggle,
+            title: strings.workflowRunLabel(ordinal),
+            trailing: formatAgentUsageNumber(workflow.totalTokens),
+          ),
+          if (expanded) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(37, 0, 12, 8),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 3,
+                children: [
+                  _WorkflowFactLabel(
+                    value: strings.workflowStatusLabel(workflow.status),
+                  ),
+                  _WorkflowFactLabel(
+                    value: strings.workflowRevisionLabel(
+                      _workflowDisplayLabel(workflow.revisionDigest, strings),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            for (var index = 0; index < workflow.commands.length; index += 1)
+              _WorkflowCommandRow(
+                command: workflow.commands[index],
+                ordinal: index + 1,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkflowDisclosureRow extends StatelessWidget {
+  const _WorkflowDisclosureRow({
+    super.key,
+    required this.expanded,
+    required this.onTap,
+    required this.title,
+    required this.trailing,
+  });
+
+  final bool expanded;
+  final VoidCallback onTap;
+  final String title;
+  final String trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return InkWell(
+      key: const ValueKey('agent-usage-workflow-disclosure'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(11),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+        child: Row(
+          children: [
+            Icon(
+              expanded ? Icons.expand_more : Icons.chevron_right,
+              size: 17,
+              color: colors.textMuted,
+            ),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.text,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              trailing,
+              style: TextStyle(
+                color: colors.text,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkflowCommandRow extends StatelessWidget {
+  const _WorkflowCommandRow({required this.command, required this.ordinal});
+
+  final AgentUsageWorkflowCommand command;
+  final int ordinal;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(37, 0, 12, 10),
+      child: _WorkflowFactRow(
+        label: strings.workflowCommandLabel(ordinal),
+        kind: strings.workflowKindLabel(command.kind),
+        membership: command.membershipId == null
+            ? null
+            : strings.workflowMembershipLabel(
+                _workflowDisplayLabel(command.membershipId!, strings),
+              ),
+        agent: command.agentId == null
+            ? null
+            : strings.workflowAgentLabel(
+                _workflowDisplayLabel(command.agentId!, strings),
+              ),
+        model: command.model == null
+            ? null
+            : strings.workflowModelLabel(
+                _workflowDisplayLabel(command.model!, strings),
+              ),
+        status: strings.workflowStatusLabel(command.status),
+        totals: command.usage,
+      ),
+    );
+  }
+}
+
+class _WorkflowFactRow extends StatelessWidget {
+  const _WorkflowFactRow({
+    required this.label,
+    required this.kind,
+    required this.membership,
+    required this.agent,
+    required this.model,
+    required this.status,
+    required this.totals,
+  });
+
+  final String label;
+  final String kind;
+  final String? membership;
+  final String? agent;
+  final String? model;
+  final String status;
+  final AgentUsageTokenTotals totals;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    return DecoratedBox(
+      decoration: continuousHairlineDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(9),
+        stroke: colors.line.withAlpha(65),
+        strokeWidth: 0.5,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colors.text,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Text(
+                  formatAgentUsageNumber(totals.totalTokens),
+                  style: TextStyle(
+                    color: colors.text,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 10,
+              runSpacing: 3,
+              children: [
+                _WorkflowFactLabel(value: kind),
+                if (membership != null) _WorkflowFactLabel(value: membership!),
+                if (agent != null) _WorkflowFactLabel(value: agent!),
+                if (model != null) _WorkflowFactLabel(value: model!),
+                _WorkflowFactLabel(value: status),
+                _WorkflowFactLabel(
+                  value:
+                      '${formatAgentUsageNumber(totals.promptTokens)} / ${formatAgentUsageNumber(totals.cachedInputTokens)} / ${formatAgentUsageNumber(totals.completionTokens)}',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkflowFactLabel extends StatelessWidget {
+  const _WorkflowFactLabel({required this.value});
+
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      value,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(color: context.licoColors.textMuted, fontSize: 10),
+    );
+  }
+}
+
+String _workflowDisplayLabel(String value, LicoStrings strings) {
+  final normalized = value.trim();
+  if (normalized.isEmpty) return strings.unknown;
+  return normalized
+      .replaceAll(RegExp(r'[-_]+'), ' ')
+      .split(RegExp(r'\s+'))
+      .where((part) => part.isNotEmpty)
+      .map(
+        (part) => '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}',
+      )
+      .join(' ');
+}
+
+List<_UsageSourceTotal> _aggregateSourceTotals(
+  List<AgentUsageAgentSummary> agents,
+) {
+  final totals = <String, _UsageSourceTotal>{};
+  for (final agent in agents) {
+    final source = agentUsageAgentDisplayName(agent);
+    totals
+        .putIfAbsent(source, () => _UsageSourceTotal(label: source))
+        .add(agent);
+  }
+  return totals.values.toList()..sort((a, b) {
+    final byTokens = b.totalTokens.compareTo(a.totalTokens);
+    if (byTokens != 0) return byTokens;
+    final byAvailability = b.hasUsage ? 1 : 0;
+    final availability = byAvailability.compareTo(a.hasUsage ? 1 : 0);
+    return availability != 0 ? availability : a.label.compareTo(b.label);
+  });
+}
+
+final class _UsageSourceTotal {
+  _UsageSourceTotal({required this.label});
+
+  final String label;
+  int totalTokens = 0;
+  bool hasUsage = false;
+
+  void add(AgentUsageAgentSummary agent) {
+    totalTokens += agent.totalTokens;
+    hasUsage = hasUsage || agent.totalTokens > 0 || agent.confidence == 'high';
+  }
+}

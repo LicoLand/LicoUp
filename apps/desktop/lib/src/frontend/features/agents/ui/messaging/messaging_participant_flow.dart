@@ -1,0 +1,860 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+
+import 'package:licoup/src/contracts/agent_conversation_models.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_timeline.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_truncation_notice.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_render_adapter.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_session_presentation.dart'
+    show conversationNow;
+import 'package:licoup/src/frontend/features/agents/ui/agent_participant_runtime_profile.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_details_panel.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_message_group.dart';
+import 'package:licoup/src/frontend/features/agents/ui/conversation_failure_notice.dart';
+import 'package:licoup/src/frontend/features/agents/ui/messaging/messaging_scroll_to_latest_button.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/shared/ui/messaging_desktop_tokens.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
+/// Longest silence between two consecutive same-author messages that still
+/// renders as one participant-flow group.
+const Duration messagingFlowMaxGroupGap = Duration(minutes: 7);
+
+/// One entry of the messaging participant flow, derived from the shared
+/// conversation timeline.
+sealed class MessagingFlowEntry {
+  const MessagingFlowEntry();
+}
+
+/// Hairline day divider with a centered Today / Yesterday / date label.
+final class MessagingFlowDayDivider extends MessagingFlowEntry {
+  const MessagingFlowDayDivider(this.day);
+
+  final DateTime day;
+}
+
+/// Consecutive messages from one author, rendered under one group header.
+final class MessagingFlowMessageGroup extends MessagingFlowEntry {
+  const MessagingFlowMessageGroup({
+    required this.authorIsUser,
+    required this.participantAgentId,
+    required this.participantLabel,
+    required this.participantRole,
+    required this.messages,
+  });
+
+  final bool authorIsUser;
+  final String participantAgentId;
+  final String participantLabel;
+  final String participantRole;
+  final List<AgentConversationMessage> messages;
+}
+
+/// Failures remain visible beside ordinary conversation messages.
+final class MessagingFlowFailure extends MessagingFlowEntry {
+  const MessagingFlowFailure(this.item);
+
+  final ConversationFailureTimelineItem item;
+}
+
+final class MessagingFlowNotice extends MessagingFlowEntry {
+  const MessagingFlowNotice(this.item);
+  final ConversationNoticeTimelineItem item;
+}
+
+/// A subagent card, kept in its existing rendering inside the content column.
+final class MessagingFlowSubagent extends MessagingFlowEntry {
+  const MessagingFlowSubagent(this.item);
+
+  final ConversationMessageTimelineItem item;
+}
+
+/// The shared truncation notice, unchanged inside the flow.
+final class MessagingFlowTruncation extends MessagingFlowEntry {
+  const MessagingFlowTruncation(this.item);
+
+  final ConversationTruncationTimelineItem item;
+}
+
+/// Projects chronological timeline items into participant-flow entries:
+/// consecutive same-author user/assistant messages group together, groups
+/// break on failures, subagent cards, and silences longer than
+/// [maxGroupGap], and local-day changes insert day dividers.
+///
+/// When [preferPeerAgents] is true (Lico group Conversation), subagent cards
+/// are projected as ordinary peer assistant message groups instead of nested
+/// cards.
+List<MessagingFlowEntry> buildMessagingFlowEntries(
+  List<ConversationTimelineItem> chronologicalItems, {
+  Duration maxGroupGap = messagingFlowMaxGroupGap,
+  bool preferPeerAgents = false,
+}) {
+  final entries = <MessagingFlowEntry>[];
+  var currentAuthorIsUser = false;
+  var currentParticipantAgentId = '';
+  var currentParticipantLabel = '';
+  var currentParticipantRole = '';
+  var currentMessages = <AgentConversationMessage>[];
+  DateTime? lastMessageTime;
+  DateTime? lastDay;
+
+  void flushGroup() {
+    if (currentMessages.isEmpty) {
+      return;
+    }
+    entries.add(
+      MessagingFlowMessageGroup(
+        authorIsUser: currentAuthorIsUser,
+        participantAgentId: currentParticipantAgentId,
+        participantLabel: currentParticipantLabel,
+        participantRole: currentParticipantRole,
+        messages: List<AgentConversationMessage>.unmodifiable(currentMessages),
+      ),
+    );
+    currentMessages = <AgentConversationMessage>[];
+    currentParticipantAgentId = '';
+    currentParticipantLabel = '';
+    currentParticipantRole = '';
+  }
+
+  void trackDay(DateTime? time) {
+    if (time == null) {
+      return;
+    }
+    final day = DateTime(time.year, time.month, time.day);
+    if (lastDay == null || day != lastDay) {
+      flushGroup();
+      entries.add(MessagingFlowDayDivider(day));
+      lastDay = day;
+    }
+  }
+
+  for (final item in chronologicalItems) {
+    switch (item) {
+      case ConversationMessageTimelineItem(:final message):
+        final kind = message.kind;
+        final isUser = kind == AgentConversationMessageKind.user;
+        final isAssistant = kind == AgentConversationMessageKind.assistant;
+        if (!isUser && !isAssistant) {
+          if (preferPeerAgents && message.isSubagentCard) {
+            flushGroup();
+            trackDay(parseAgentConversationTimestamp(message.createdAt));
+            final peerText = message.text.trim().isNotEmpty
+                ? message.text
+                : message.cardTitle;
+            final peer = AgentConversationMessage(
+              id: message.id,
+              role: 'assistant',
+              text: peerText,
+              createdAt: message.createdAt,
+              layer: AgentConversationSemanticLayer.thread,
+              participantAgentId: message.participantAgentId,
+              participantLabel: message.participantLabel.trim().isNotEmpty
+                  ? message.participantLabel
+                  : message.cardTitle,
+              participantRole: message.participantRole.trim().isNotEmpty
+                  ? message.participantRole
+                  : 'peer-agent',
+              images: message.images,
+            );
+            entries.add(
+              MessagingFlowMessageGroup(
+                authorIsUser: false,
+                participantAgentId: peer.participantAgentId.trim(),
+                participantLabel: peer.participantLabel.trim(),
+                participantRole: peer.participantRole.trim(),
+                messages: List<AgentConversationMessage>.unmodifiable([peer]),
+              ),
+            );
+            lastMessageTime =
+                parseAgentConversationTimestamp(message.createdAt) ??
+                lastMessageTime;
+            continue;
+          }
+          flushGroup();
+          entries.add(MessagingFlowSubagent(item));
+          continue;
+        }
+        final time = parseAgentConversationTimestamp(message.createdAt);
+        trackDay(time);
+        final gap = time != null && lastMessageTime != null
+            ? time.difference(lastMessageTime)
+            : null;
+        final participantAgentId = isUser
+            ? ''
+            : message.participantAgentId.trim();
+        final participantLabel = isUser ? '' : message.participantLabel.trim();
+        final participantRole = isUser ? '' : message.participantRole.trim();
+        final participantChanged =
+            currentMessages.isNotEmpty &&
+            (currentParticipantAgentId != participantAgentId ||
+                currentParticipantLabel != participantLabel ||
+                currentParticipantRole != participantRole);
+        if (currentMessages.isNotEmpty &&
+            (currentAuthorIsUser != isUser ||
+                participantChanged ||
+                (gap != null && gap > maxGroupGap))) {
+          flushGroup();
+        }
+        currentAuthorIsUser = isUser;
+        currentParticipantAgentId = participantAgentId;
+        currentParticipantLabel = participantLabel;
+        currentParticipantRole = participantRole;
+        currentMessages.add(message);
+        lastMessageTime = time ?? lastMessageTime;
+      case ConversationFailureTimelineItem():
+        flushGroup();
+        entries.add(MessagingFlowFailure(item));
+      case ConversationNoticeTimelineItem():
+        flushGroup();
+        entries.add(MessagingFlowNotice(item));
+      case ConversationTruncationTimelineItem():
+        flushGroup();
+        entries.add(MessagingFlowTruncation(item));
+    }
+  }
+  flushGroup();
+  return List<MessagingFlowEntry>.unmodifiable(entries);
+}
+
+/// Discord-style participant flow: messages group by author under one header
+/// (avatar, name, AGENT badge), with failures kept in the same timeline,
+/// and day dividers separate local days. The same timeline data the console
+/// transcript renders, projected into a chat surface.
+///
+/// Long transcripts remain lazy through [ListView.builder]. Reaching the
+/// oldest loaded edge asks the controller for the next native message page.
+class MessagingParticipantFlow extends StatefulWidget {
+  const MessagingParticipantFlow({
+    super.key,
+    required this.items,
+    required this.adapter,
+    required this.target,
+    this.sessionKey = '',
+    this.motionAvatarMessageId = '',
+    this.participantTargets = const [],
+    this.participantConversationIds = const {},
+    this.participantRuntimeProfiles = const {},
+    this.assistantActive = false,
+    this.primaryConversationId = '',
+    this.preferPeerAgents = false,
+    this.streamingMessageIds = const <String>{},
+    this.topOverlayInset = 0,
+    this.bottomOverlayInset = 0,
+    this.scrollController,
+    this.onCopyText,
+    this.onRetryMessage,
+    this.onDeleteMessage,
+    this.messagePageLoading = false,
+    this.messagePageError = '',
+    this.hasEarlier = false,
+    this.onLoadEarlier,
+  });
+
+  /// Minimum distance from the top of the loaded history that starts loading
+  /// the earlier page. The effective lead-in is one full viewport (see
+  /// [_loadEarlierOnScroll]) so the request lands before a fast fling reaches
+  /// the oldest loaded edge.
+  static const double earlierPageLeadIn = 120;
+
+  /// Timeline items in the message-list cache order (newest first).
+  final List<ConversationTimelineItem> items;
+  final AgentRenderAdapter adapter;
+  final TargetCandidate target;
+  final String sessionKey;
+  final String motionAvatarMessageId;
+  final List<TargetCandidate> participantTargets;
+
+  /// Agent id → that agent's conversation id for hover metadata.
+  final Map<String, String> participantConversationIds;
+  final Map<String, AgentParticipantRuntimeProfile> participantRuntimeProfiles;
+
+  /// Whether the group assistant lane is active; forwarded to assistant
+  /// message groups so the header mark follows the toggle.
+  final bool assistantActive;
+
+  /// Fallback conversation id when a message has no participant agent id.
+  final String primaryConversationId;
+
+  /// Lico group Conversation: render delegated agents as peer bubbles.
+  final bool preferPeerAgents;
+
+  /// Ids of messages whose body is a partially written streamed reply. The
+  /// owning pane derives the set from the live turn state; it is never
+  /// inferred from text shape. Streamed ids are message-identity based, so
+  /// the streamed-text patch path keeps working: a revision swaps the message
+  /// object but the id stays in the set.
+  final Set<String> streamingMessageIds;
+
+  /// Extra top padding when a floating header overlays the transcript.
+  final double topOverlayInset;
+
+  /// Extra bottom padding when a floating composer overlays the transcript.
+  final double bottomOverlayInset;
+
+  /// Optional owner for coordinating a floating child scroll surface with
+  /// the transcript viewport.
+  final ScrollController? scrollController;
+
+  final Future<void> Function(String)? onCopyText;
+  final Future<void> Function(String)? onRetryMessage;
+  final Future<void> Function(String)? onDeleteMessage;
+  final bool messagePageLoading;
+  final String messagePageError;
+  final bool hasEarlier;
+  final Future<void> Function()? onLoadEarlier;
+
+  @override
+  State<MessagingParticipantFlow> createState() =>
+      _MessagingParticipantFlowState();
+}
+
+/// Incremental patch for streamed-text revisions anywhere in the timeline.
+///
+/// A streaming reply republishes the timeline every few frames while usually
+/// only text changes. With multiple concurrent group turns, the changed
+/// message may sit anywhere in the live list, not just at the newest item.
+/// Rebuilding the whole entry list on each publish is O(history); this patch
+/// instead swaps the affected flow entries and keeps every other entry's
+/// object identity so Flutter skips their rebuild.
+///
+/// Returns null when the change is not a pure set of message text revisions —
+/// the caller then rebuilds the entry list, which stays the only path allowed
+/// to change structure.
+List<MessagingFlowEntry>? patchMessagingFlowStreamedMessages({
+  required List<ConversationTimelineItem> previousItems,
+  required List<ConversationTimelineItem> nextItems,
+  required List<MessagingFlowEntry> previousEntries,
+}) {
+  if (previousItems.length != nextItems.length || previousEntries.isEmpty) {
+    return null;
+  }
+  final changedIndices = <int>[];
+  for (var index = 0; index < nextItems.length; index += 1) {
+    if (identical(previousItems[index], nextItems[index])) continue;
+    final previous = previousItems[index];
+    final next = nextItems[index];
+    if (previous is! ConversationMessageTimelineItem ||
+        next is! ConversationMessageTimelineItem) {
+      return null;
+    }
+    if (previous.storageKey != next.storageKey) return null;
+    if (!_isStreamedTextRevision(previous.message, next.message)) return null;
+    changedIndices.add(index);
+  }
+  if (changedIndices.isEmpty) return null;
+
+  final patched = List<MessagingFlowEntry>.of(previousEntries);
+  for (final changed in changedIndices) {
+    final previousMessage =
+        (previousItems[changed] as ConversationMessageTimelineItem).message;
+    final nextMessage =
+        (nextItems[changed] as ConversationMessageTimelineItem).message;
+    final entryIndex = _entryIndexOfMessage(patched, previousMessage);
+    if (entryIndex < 0) return null;
+    patched[entryIndex] = _patchedMessageEntry(
+      patched[entryIndex],
+      previousMessage,
+      nextMessage,
+    );
+  }
+  return List<MessagingFlowEntry>.unmodifiable(patched);
+}
+
+bool _isStreamedTextRevision(
+  AgentConversationMessage previous,
+  AgentConversationMessage next,
+) {
+  return previous.id == next.id &&
+      previous.role == next.role &&
+      previous.createdAt == next.createdAt &&
+      previous.cardType == next.cardType &&
+      previous.stableIdentity == next.stableIdentity &&
+      previous.participantAgentId == next.participantAgentId &&
+      previous.participantLabel == next.participantLabel &&
+      previous.participantRole == next.participantRole &&
+      previous.childMessages.isEmpty &&
+      next.childMessages.isEmpty &&
+      !previous.isStructuredEvent &&
+      !next.isStructuredEvent;
+}
+
+int _entryIndexOfMessage(
+  List<MessagingFlowEntry> entries,
+  AgentConversationMessage message,
+) {
+  for (var index = 0; index < entries.length; index += 1) {
+    final entry = entries[index];
+    if (entry is MessagingFlowMessageGroup) {
+      for (final candidate in entry.messages) {
+        if (identical(candidate, message)) return index;
+      }
+    } else if (entry is MessagingFlowSubagent) {
+      if (identical(entry.item.message, message)) return index;
+    }
+  }
+  return -1;
+}
+
+MessagingFlowEntry _patchedMessageEntry(
+  MessagingFlowEntry entry,
+  AgentConversationMessage previousMessage,
+  AgentConversationMessage nextMessage,
+) {
+  if (entry is MessagingFlowSubagent) {
+    return MessagingFlowSubagent(
+      ConversationMessageTimelineItem(entry.item.storageKey, nextMessage),
+    );
+  }
+  final group = entry as MessagingFlowMessageGroup;
+  final messages = List<AgentConversationMessage>.of(group.messages);
+  for (var index = 0; index < messages.length; index += 1) {
+    if (identical(messages[index], previousMessage)) {
+      messages[index] = nextMessage;
+    }
+  }
+  return MessagingFlowMessageGroup(
+    authorIsUser: group.authorIsUser,
+    participantAgentId: group.participantAgentId,
+    participantLabel: group.participantLabel,
+    participantRole: group.participantRole,
+    messages: List<AgentConversationMessage>.unmodifiable(messages),
+  );
+}
+
+class _MessagingParticipantFlowState extends State<MessagingParticipantFlow> {
+  ScrollController? _ownedScrollController;
+  bool _atLatest = true;
+  List<MessagingFlowEntry>? _cachedEntries;
+  List<ConversationTimelineItem>? _cachedItems;
+
+  /// Slots for the reversed flow. Rebuilt only when the entries or the
+  /// earlier-page presence change, so [CollectionView] captures one reading
+  /// anchor per real content change.
+  List<_FlowSlot> _cachedSlots = const [];
+  int _cachedSlotsRevision = -1;
+  bool _cachedSlotsShowEarlier = false;
+  int _entriesRevision = 0;
+  bool _pageRequestInFlight = false;
+
+  /// Reverse lists keep the newest rows at offset 0. Treat a small residual
+  /// as still "at latest" so the control does not flicker.
+  static const double _atLatestThreshold = 48;
+
+  ScrollController get _scrollController =>
+      widget.scrollController ?? _ownedScrollController!;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.scrollController == null) {
+      _ownedScrollController = ReadingPositionScrollController();
+    }
+    _scrollController.addListener(_syncAtLatest);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncAtLatest());
+  }
+
+  @override
+  void didUpdateWidget(MessagingParticipantFlow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.sessionKey != widget.sessionKey) {
+      // A different conversation starts from its own newest window.
+      _atLatest = true;
+      _pageRequestInFlight = false;
+    }
+    if (oldWidget.preferPeerAgents != widget.preferPeerAgents) {
+      _cachedEntries = null;
+    }
+    if (oldWidget.scrollController != widget.scrollController) {
+      (oldWidget.scrollController ?? _ownedScrollController)?.removeListener(
+        _syncAtLatest,
+      );
+      if (widget.scrollController == null) {
+        _ownedScrollController ??= ReadingPositionScrollController();
+      } else {
+        _ownedScrollController?.dispose();
+        _ownedScrollController = null;
+      }
+      _scrollController.addListener(_syncAtLatest);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncAtLatest());
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_syncAtLatest);
+    _ownedScrollController?.dispose();
+    super.dispose();
+  }
+
+  void _syncAtLatest() {
+    final atLatest =
+        !_scrollController.hasClients ||
+        _scrollController.position.maxScrollExtent <= 0 ||
+        _scrollController.position.pixels <= _atLatestThreshold;
+    if (atLatest == _atLatest || !mounted) {
+      return;
+    }
+    setState(() => _atLatest = atLatest);
+  }
+
+  void _jumpToLatest() {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+    _scrollController.jumpTo(0);
+    _syncAtLatest();
+  }
+
+  TargetCandidate? _participantTarget(String participantAgentId) {
+    final normalized = participantAgentId.trim();
+    if (normalized.isEmpty) return null;
+    for (final candidate in widget.participantTargets) {
+      if (candidate.target == normalized) return candidate;
+    }
+    return null;
+  }
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    return _loadEarlierOnScroll(notification);
+  }
+
+  bool _loadEarlierOnScroll(ScrollNotification notification) {
+    if (notification.depth != 0) {
+      return false;
+    }
+    final movingEarlier = switch (notification) {
+      ScrollUpdateNotification(:final scrollDelta) => (scrollDelta ?? 0) > 0,
+      OverscrollNotification(:final overscroll) => overscroll > 0,
+      _ => false,
+    };
+    if (!movingEarlier) return false;
+    final metrics = notification.metrics;
+    if (!widget.hasEarlier ||
+        widget.messagePageLoading ||
+        _pageRequestInFlight) {
+      return false;
+    }
+    // Start the page one full viewport ahead of the oldest loaded edge so the
+    // request lands before a fast fling reaches the wall; reaching the wall
+    // kills the in-flight scroll and forces a second swipe.
+    final leadIn = math.max(
+      MessagingParticipantFlow.earlierPageLeadIn,
+      metrics.viewportDimension,
+    );
+    if (metrics.pixels < metrics.maxScrollExtent - leadIn) {
+      return false;
+    }
+    final request = widget.onLoadEarlier;
+    if (request != null) {
+      _pageRequestInFlight = true;
+      request().whenComplete(() {
+        if (mounted) _pageRequestInFlight = false;
+      });
+    }
+    return false;
+  }
+
+  List<MessagingFlowEntry> get _displayEntries {
+    final items = widget.items;
+    final cached = _cachedEntries;
+    if (cached == null) return _rebuildEntries(items);
+    if (identical(items, _cachedItems)) return cached;
+    final patched = patchMessagingFlowStreamedMessages(
+      previousItems: _cachedItems!,
+      nextItems: items,
+      previousEntries: cached,
+    );
+    if (patched != null) {
+      _cachedItems = items;
+      _cachedEntries = patched;
+      return patched;
+    }
+    return _rebuildEntries(items);
+  }
+
+  List<MessagingFlowEntry> _rebuildEntries(
+    List<ConversationTimelineItem> items,
+  ) {
+    final entries = buildMessagingFlowEntries(
+      items.reversed.toList(growable: false),
+      preferPeerAgents: widget.preferPeerAgents,
+    );
+    final display = entries.reversed.toList(growable: false);
+    _cachedItems = items;
+    _cachedEntries = display;
+    _entriesRevision += 1;
+    return display;
+  }
+
+  /// The reversed flow's slots: every display entry, then the earlier-page slot
+  /// at the oldest end.
+  ///
+  /// Slots carry an index into the cached entries rather than a second index
+  /// map, so a streamed text revision that patches one entry in place keeps this
+  /// list's identity: the lazy list neither re-indexes its keys nor re-captures
+  /// the reading anchor mid-reply.
+  List<_FlowSlot> _displaySlots(List<MessagingFlowEntry> entries) {
+    final showEarlier =
+        widget.hasEarlier ||
+        widget.messagePageLoading ||
+        widget.messagePageError.isNotEmpty;
+    if (_cachedSlotsRevision == _entriesRevision &&
+        showEarlier == _cachedSlotsShowEarlier) {
+      return _cachedSlots;
+    }
+    _cachedSlotsRevision = _entriesRevision;
+    _cachedSlotsShowEarlier = showEarlier;
+    _cachedSlots = List<_FlowSlot>.unmodifiable(<_FlowSlot>[
+      for (var index = 0; index < entries.length; index += 1)
+        _FlowSlot.entry(index),
+      if (showEarlier) const _FlowSlot.earlierPage(),
+    ]);
+    return _cachedSlots;
+  }
+
+  String _entryKey(MessagingFlowEntry entry) => switch (entry) {
+    MessagingFlowDayDivider(:final day) => 'day-$day',
+    MessagingFlowMessageGroup(:final messages) =>
+      'message-${messages.first.stableIdentity.isNotEmpty ? messages.first.stableIdentity : '${messages.first.id}-${messages.first.createdAt}'}',
+    MessagingFlowFailure(:final item) => item.storageKey,
+    MessagingFlowNotice(:final item) => item.storageKey,
+    MessagingFlowSubagent(:final item) => item.storageKey,
+    MessagingFlowTruncation(:final item) => item.storageKey,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final displayEntries = _displayEntries;
+    final displaySlots = _displaySlots(displayEntries);
+    // Conversation text must be selectable and copyable. Selection is hosted
+    // once at the pane level (AgentConversationActivePane) so a drag can span
+    // several messages; a nested SelectionArea here would double-register
+    // every visible RichText and fan selection geometry updates out on every
+    // scroll frame. Chrome that would pollute a selection — process rows, log
+    // rows — opts out with SelectionContainer.disabled at its own site.
+    return NotificationListener<ScrollNotification>(
+      onNotification: _handleScrollNotification,
+      child: Stack(
+        children: [
+          CollectionView<_FlowSlot>(
+            // Page storage keeps this flow's offset apart from other
+            // scrollables on the route.
+            key: PageStorageKey<String>(
+              'messaging-participant-flow-${widget.sessionKey}',
+            ),
+            items: displaySlots,
+            itemKey: (slot) => slot.isEarlierPage
+                ? 'messaging-flow-earlier-page'
+                : _entryKey(displayEntries[slot.entryIndex]),
+            controller: _scrollController,
+            reverse: true,
+            // A streamed reply changes one slot per frame. Without a repaint
+            // boundary per slot the whole visible flow repaints with it.
+            wrapWithRepaintBoundary: true,
+            scrollCacheExtent: 2.0,
+            padding: EdgeInsets.fromLTRB(
+              LicoContentSpacing.item,
+              LicoContentSpacing.item + widget.topOverlayInset,
+              LicoContentSpacing.item,
+              LicoContentSpacing.item +
+                  widget.adapter.assistantVerticalPadding +
+                  widget.bottomOverlayInset,
+            ),
+            itemBuilder: (context, slot, index) => slot.isEarlierPage
+                ? _MessagingEarlierPageRow(
+                    loading: widget.messagePageLoading,
+                    errorCode: widget.messagePageError,
+                    onRetry: widget.onLoadEarlier,
+                  )
+                : _entryContent(context, displayEntries[slot.entryIndex]),
+          ),
+          if (!_atLatest)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom:
+                      widget.bottomOverlayInset +
+                      MessagingDesktopMetrics.conversationScrollToLatestGap,
+                ),
+                child: SelectionContainer.disabled(
+                  child: MessagingScrollToLatestButton(
+                    key: const Key('conversation-scroll-to-latest'),
+                    onPressed: _jumpToLatest,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _entryContent(BuildContext context, MessagingFlowEntry entry) {
+    return switch (entry) {
+      MessagingFlowDayDivider(:final day) => _MessagingDayDividerRow(day: day),
+      MessagingFlowMessageGroup(
+        :final authorIsUser,
+        :final participantAgentId,
+        :final participantLabel,
+        :final participantRole,
+        :final messages,
+      ) =>
+        Padding(
+          padding: LicoContentSpacing.peerItem,
+          child: MessagingMessageGroup(
+            scrollController: _scrollController,
+            authorIsUser: authorIsUser,
+            participantLabel: participantLabel,
+            participantRole: participantRole,
+            participantTarget: _participantTarget(participantAgentId),
+            assistantActive: widget.assistantActive,
+            motionAvatar: messages.any(
+              (message) => message.id == widget.motionAvatarMessageId,
+            ),
+            runtimeProfile:
+                widget.participantRuntimeProfiles[participantAgentId],
+            streamingMessageIds: widget.streamingMessageIds,
+            messages: messages,
+            target: widget.target,
+            adapter: widget.adapter,
+            conversationId: messagingHoverConversationId(
+              authorIsUser: authorIsUser,
+              participantAgentId: participantAgentId,
+              participantConversationIds: widget.participantConversationIds,
+              primaryConversationId: widget.primaryConversationId,
+            ),
+            onCopyText: widget.onCopyText,
+            onRetryMessage: widget.onRetryMessage,
+            onDeleteMessage: widget.onDeleteMessage,
+          ),
+        ),
+      MessagingFlowFailure(:final item) => Padding(
+        padding: LicoContentSpacing.peerItem,
+        child: ConversationFailureNotice(
+          message: item.message,
+          target:
+              _participantTarget(item.message.participantAgentId) ??
+              widget.target,
+        ),
+      ),
+      MessagingFlowNotice(:final item) => Padding(
+        padding: LicoContentSpacing.peerItem,
+        child: ConversationNotice(message: item.message),
+      ),
+      MessagingFlowSubagent(:final item) => Padding(
+        padding: LicoContentSpacing.peerItem,
+        child: AgentConversationSubagentCardBlock(
+          message: item.message,
+          adapter: widget.adapter,
+          fullWidth: true,
+        ),
+      ),
+      MessagingFlowTruncation(:final item) => Padding(
+        padding: LicoContentSpacing.peerItem,
+        child: ConversationTruncationNotice(
+          historyTruncated: item.historyTruncated,
+          messageTreeTruncated: item.messageTreeTruncated,
+        ),
+      ),
+    };
+  }
+}
+
+/// One slot of the reversed participant flow: an index into the cached display
+/// entries, or the earlier-page slot at the oldest end.
+@immutable
+final class _FlowSlot {
+  const _FlowSlot.entry(this.entryIndex) : isEarlierPage = false;
+  const _FlowSlot.earlierPage() : entryIndex = -1, isEarlierPage = true;
+
+  final int entryIndex;
+  final bool isEarlierPage;
+}
+
+final class _MessagingEarlierPageRow extends StatelessWidget {
+  const _MessagingEarlierPageRow({
+    required this.loading,
+    required this.errorCode,
+    required this.onRetry,
+  });
+
+  final bool loading;
+  final String errorCode;
+  final Future<void> Function()? onRetry;
+
+  /// Fixed extent for the oldest-edge slot. The row sits exactly where the
+  /// reader parks while a page loads; a height swap there would shift
+  /// maxScrollExtent mid-gesture and cancel the in-flight scroll.
+  static const double extent = 48;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: extent,
+      child: Center(
+        child: loading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: LicoLoadingIndicator(strokeWidth: 2),
+              )
+            : errorCode.isNotEmpty
+            ? TextButton.icon(
+                key: const Key('messaging-message-page-retry'),
+                onPressed: onRetry == null ? null : () => onRetry!.call(),
+                icon: const Icon(Icons.refresh_rounded, size: 17),
+                label: Text('History page failed: $errorCode'),
+              )
+            : const SizedBox.shrink(),
+      ),
+    );
+  }
+}
+
+class _MessagingDayDividerRow extends StatelessWidget {
+  const _MessagingDayDividerRow({required this.day});
+
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    final now = conversationNow();
+    final today = DateTime(now.year, now.month, now.day);
+    final label = day == today
+        ? strings.today
+        : day == today.subtract(const Duration(days: 1))
+        ? strings.yesterday
+        : MaterialLocalizations.of(context).formatMediumDate(day);
+    return Padding(
+      key: const Key('messaging-day-divider'),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          Expanded(child: Divider(height: 1, color: colors.line)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: colors.textMuted,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(child: Divider(height: 1, color: colors.line)),
+        ],
+      ),
+    );
+  }
+}

@@ -1,0 +1,68 @@
+import { selectedTargetIds } from "./targets.mjs";
+import { requireValue, text } from "./util.mjs";
+import { validateConfig } from "./validate-config.mjs";
+
+export function validateReleaseSelectionPreflight({
+  catalog,
+  config,
+  receiptConfig,
+  selectedTargetIds: requestedTargetIds,
+}) {
+  validateConfig(config);
+  const authorityIds = config.releaseTargetAuthority.selectedTargetIds;
+  const releaseSupportedIds = catalog.targets
+    .filter((target) => target.releaseSupported === true)
+    .map((target) => target.id);
+  const authorityTargets = authorityIds.map((targetId) =>
+    catalog.targets.find((target) => target.id === targetId));
+  requireValue(
+    authorityTargets.every((target) => target?.packageBuildSupported === true) &&
+      releaseSupportedIds.every((targetId) => authorityIds.includes(targetId)),
+    "package acceptance authority does not cover the release-supported targets",
+  );
+  requireValue(
+    receiptConfig?.schemaVersion ===
+      "licoup.client-artifact-verification-receipts-config.v3" &&
+      JSON.stringify(Object.keys(receiptConfig.targets || {})) ===
+        JSON.stringify(authorityIds),
+    "artifact receipt target authority is incomplete",
+  );
+  requireValue(Array.isArray(requestedTargetIds) && requestedTargetIds.length > 0 &&
+    new Set(requestedTargetIds).size === requestedTargetIds.length,
+  "release target selection is invalid");
+  requireValue(JSON.stringify(requestedTargetIds) === JSON.stringify(
+    authorityIds.filter((id) => requestedTargetIds.includes(id)),
+  ), "release target selection is not in canonical authority order");
+  for (const targetId of requestedTargetIds) {
+    const target = catalog.targets.find((entry) => entry.id === targetId);
+    requireValue(target?.packageBuildSupported === true && authorityIds.includes(targetId),
+      `selected target is outside package acceptance authority: ${targetId}`);
+    const artifact = config.artifacts[targetId];
+    const receipt = receiptConfig.targets[targetId];
+    requireValue(artifact && receipt,
+      `selected target closure specification is missing: ${targetId}`);
+    requireValue(
+      receipt.platform === target.platform &&
+        receipt.evidenceTargetId === target.runtimeTargetId &&
+        receipt.artifactKind === artifact.artifactKind &&
+        receipt.artifactRef === artifact.ref &&
+        text(receipt.distributionManifestRef) ===
+          text(artifact.distributionManifestRef) &&
+        receipt.consumerVerificationPolicy ===
+          artifact.consumerVerificationPolicy,
+      `selected target artifact/receipt specification mismatch: ${targetId}`,
+    );
+    requireValue(
+      text(receipt.evidenceRef) && text(receipt.evidenceSchemaVersion) &&
+        text(receipt.evidenceProducer) &&
+        text(receipt.evidenceInvocation?.script),
+      `selected target evidence specification is incomplete: ${targetId}`,
+    );
+    if (targetId === "macos-direct-arm64") {
+      requireValue(receipt.evidenceArtifactKind === "macos-app-bundle" &&
+        receipt.evidenceArtifactRef === artifact.installArtifactRef,
+      "macOS install evidence is not bound to the distribution lineage");
+    }
+  }
+  return true;
+}

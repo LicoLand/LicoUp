@@ -1,0 +1,251 @@
+import {
+  assert,
+  test,
+  CLIENT_MODULE_CATALOG,
+  selectModulesForChangedPaths,
+  ids,
+} from "./support.mjs";
+
+test("every explicitly owned Flutter test runs in its module command", () => {
+  for (const module of CLIENT_MODULE_CATALOG) {
+    const flutterTestIndex = module.command.args.indexOf("test");
+    if (flutterTestIndex < 0 ||
+        module.command.args[flutterTestIndex - 1] !== "flutter") {
+      continue;
+    }
+    const commandedTests = new Set(
+      module.command.args
+        .slice(flutterTestIndex + 1)
+        .filter((argument) => !argument.startsWith("--")),
+    );
+    for (const input of module.inputs) {
+      if (!input.startsWith("apps/desktop/test/") ||
+          !input.endsWith("_test.dart")) {
+        continue;
+      }
+      assert.equal(
+        commandedTests.has(input.slice("apps/desktop/".length)),
+        true,
+        `${module.id} does not execute its owned test: ${input}`,
+      );
+    }
+  }
+});
+
+test("native usage projection and rich hover use existing usage modules", () => {
+  const selections = new Map([
+    ["apps/desktop/test/agent_usage_native_projection_test.dart", [
+      "flutter.feature.agent-usage",
+    ]],
+    ["apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_hover_card.dart", [
+      "architecture.client-boundaries",
+      "flutter.feature.agent-usage.visualization",
+    ]],
+    ["apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_source_hover.dart", [
+      "architecture.client-boundaries",
+      "flutter.feature.agent-usage.visualization",
+    ]],
+    ["apps/desktop/test/agent_usage_hover_card_test.dart", [
+      "flutter.feature.agent-usage.visualization",
+    ]],
+  ]);
+  for (const [changedPath, expectedIds] of selections) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([changedPath])), expectedIds);
+  }
+});
+
+test("changed Flutter feature paths select only their bounded feature module", () => {
+  for (const changedPath of [
+    "apps/desktop/shaders/glass_lens.frag",
+    "apps/desktop/test/continuous_stroke_test.dart",
+    "apps/desktop/test/lico_glass_test.dart",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([changedPath])), [
+      "flutter.layer.shell",
+    ]);
+  }
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/test/canonical_group_roster_visibility_test.dart",
+  ])), ["flutter.feature.agent-conversations"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/contracts/mcp_adapter.dart",
+  ])), ["architecture.client-boundaries", "flutter.feature.mcp-transfer"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/features/agents/controller/agent_usage_controller.dart",
+  ])), ["architecture.client-boundaries", "flutter.feature.agent-usage"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/features/agents/conversation/agent_conversation_controller.dart",
+  ])), ["architecture.client-boundaries", "flutter.feature.agent-conversations"]);
+  for (const changedPath of [
+    "apps/desktop/lib/src/application/features/agents/conversation/conversation_execution_observer.dart",
+    "apps/desktop/lib/src/frontend/features/agents/ui/execution_process/conversation_execution_viewer.dart",
+  ]) {
+    assert.deepEqual(ids(selectModulesForChangedPaths([changedPath])), [
+      "architecture.client-boundaries",
+      "flutter.feature.agent-conversations",
+    ]);
+  }
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/test/conversation_execution_projection_test.dart",
+  ])), ["flutter.feature.agent-conversations"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/frontend/shared/messaging/conversation_motion/conversation_particle_field.dart",
+  ])), ["architecture.client-boundaries", "flutter.layer.shell"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/test/agents_workspace/agents_workspace_renderer_diagnostics_test.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.agents.workspace.renderer-diagnostics",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/test/conversation_execution_transport_test.dart",
+  ])), ["bridge.flutter-native-client.stdio-transport"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/features/agents/conversation/conversation_turn_queue.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.agent-conversations.follow-up-queue",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/frontend/features/agents/ui/conversation_archive_dialog.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.agent-conversations.archive-selection",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_window_control.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.agent-usage.window-control",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/features/skill_hub/controller/skill_delete_controller.dart",
+  ])), ["architecture.client-boundaries", "flutter.feature.skill-hub.delete"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/features/skill_hub/controller/skill_usage_controller.dart",
+  ])), ["architecture.client-boundaries", "flutter.feature.skill-hub.usage"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/features/settings/controller/optional_collaboration_controller.dart",
+  ])), ["architecture.client-boundaries", "flutter.feature.optional-collaboration"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/features/settings/controller/optional_collaboration_workflow_controller.dart",
+  ])), ["architecture.client-boundaries", "flutter.feature.optional-collaboration"]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/features/settings/controller/optional_collaboration_runner_trust_actions.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.optional-collaboration.runner-trust",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/features/settings/controller/optional_collaboration_install_actions.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.optional-collaboration.install-lifecycle",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/features/settings/controller/optional_collaboration_local_assembly_actions.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.optional-collaboration.local-server-assembly",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/features/settings/controller/optional_collaboration_mcp_actions.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.optional-collaboration.mcp-install",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/frontend/features/agents/ui/history_session_search.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.agent-conversations.history-session",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/frontend/features/agents/ui/agent_usage_chart_geometry.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.agent-usage.visualization",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/features/devices/devices_controller.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.devices",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/frontend/layout/profiles/dashboard/desktop/shell/dashboard_card_shell.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.layer.layout",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_pane.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "regression.agent-conversation-pane-source-bundle",
+    "flutter.feature.agent-conversations.pane-composition",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_pane/resize.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "regression.agent-conversation-pane-source-bundle",
+    "flutter.feature.agent-conversations.pane-resize",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_message_blocks.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "regression.agent-conversation-message-blocks-source-bundle",
+    "flutter.feature.agent-conversations.message-blocks-dispatcher",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/frontend/features/agents/ui/agent_conversation_message_blocks/disclosures.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "regression.agent-conversation-message-blocks-source-bundle",
+    "flutter.feature.agent-conversations.message-blocks-disclosures",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/frontend/features/devices/ui/devices_panel.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.devices",
+  ]);
+});
+
+test("Flutter controller assembly selects precise closures", () => {
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/controller/client_controller.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.controller.facade",
+  ]);
+  assert.deepEqual(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/application/controller/assembly/client_devices_component_assembly.dart",
+  ])), [
+    "architecture.client-boundaries",
+    "flutter.feature.devices",
+    "flutter.controller.assembly.devices",
+  ]);
+  const facade = CLIENT_MODULE_CATALOG.find(
+    (module) => module.id === "flutter.controller.facade",
+  );
+  assert.equal(
+    facade.command.args.includes("test/client_controller_runtime_facades_test.dart"),
+    true,
+  );
+});
+
+test("Dashboard and desktop layout keep focused catalog ownership", () => {
+  const layoutFoundation = CLIENT_MODULE_CATALOG.find((candidate) =>
+    candidate.id === "flutter.layer.layout");
+  assert.ok(layoutFoundation);
+  assert.equal(layoutFoundation.inputs.includes(
+    "apps/desktop/lib/src/frontend/layout/**"), false);
+  assert.equal(layoutFoundation.inputs.includes(
+    "apps/desktop/test/layout/**"), false);
+  assert.ok(ids(selectModulesForChangedPaths([
+    "apps/desktop/lib/src/platform/layout/desktop_dock_layout_store.dart",
+  ])).includes("flutter.layer.layout"));
+});

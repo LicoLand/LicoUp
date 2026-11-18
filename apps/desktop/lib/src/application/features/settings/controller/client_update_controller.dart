@@ -1,0 +1,616 @@
+import 'package:licoup/src/application/state/application_signal.dart';
+
+import 'package:licoup/src/contracts/agent_command_runner.dart';
+import 'package:licoup/src/contracts/client_update_gateway.dart';
+import 'package:licoup/src/contracts/client_update_models.dart';
+
+final class ClientUpdateStatusUpdate {
+  const ClientUpdateStatusUpdate({
+    required this.chinese,
+    required this.english,
+    this.errorCode = '',
+  });
+
+  final String chinese;
+  final String english;
+  final String errorCode;
+}
+
+typedef ClientUpdateStatusSink = void Function(ClientUpdateStatusUpdate update);
+
+/// Independently testable signed-update workflow for the GitHub release
+/// source and the local manifest flow. The staging and state roots live under
+/// the client data directory so installed clients never depend on the
+/// process working directory.
+final class ClientUpdateController extends ApplicationStateOwner {
+  ClientUpdateController({
+    required ClientUpdateGateway gateway,
+    required AgentCommandRunner agentService,
+    required ClientUpdateStatusSink onStatus,
+    Future<String> Function()? dataDirectory,
+  }) : _gateway = gateway,
+       _agentService = agentService,
+       _onStatus = onStatus,
+       _dataDirectory = dataDirectory;
+
+  final ClientUpdateGateway _gateway;
+  final AgentCommandRunner _agentService;
+  final ClientUpdateStatusSink _onStatus;
+  final Future<String> Function()? _dataDirectory;
+
+  ClientUpdateStatus _status = const ClientUpdateStatus(
+    phase: ClientUpdatePhase.idle,
+    runningVersion: '',
+    runningReleaseTrack: ReleaseTrack.nightly,
+    targetReleaseTrack: ReleaseTrack.nightly,
+  );
+  String _manifestPath = '';
+  String _publicKeysPath = '';
+  String _targetReleaseTrack = '';
+  String _revocationPath = '';
+  String _artifactReceiptId = '';
+  String _source = 'github';
+  String _repo = kClientUpdateGithubRepo;
+  String _stagingRoot = '';
+  String _stateRoot = '';
+  String _dataRoot = '';
+  bool _rootsResolved = false;
+  bool _artifactDownloaded = false;
+  bool _artifactVerified = false;
+  bool _busy = false;
+
+  ClientUpdateStatus get status => _status;
+  String get manifestPath => _manifestPath;
+  String get publicKeysPath => _publicKeysPath;
+  String get artifactReceiptId => _artifactReceiptId;
+  String get source => _source;
+  String get repo => _repo;
+  bool get busy => _busy;
+
+  /// The last observed host maintenance answer. Absent or unreadable answers
+  /// stay fail closed: the client never approves an installed-state change on
+  /// its own.
+  ClientUpdateAdmission get admission => _status.admission;
+
+  /// The unfinished tasks the native host reported behind [admission].
+  List<ClientUpdateBlocker> get admissionBlockers => _status.admission.blockers;
+
+  /// True when the native decision reported more blockers than it listed.
+  bool get admissionBlockersTruncated => _status.admission.truncated;
+
+  /// The stable code explaining why apply is locked, or empty when it is not.
+  String get applyLockReasonCode => _status.admission.lockReasonCode;
+
+  /// Whether the host administration answer still permits the pending switch.
+  bool get admissionAllowsApply => _status.admission.allowsMaintenance;
+
+  String get sourceAddress => clientUpdatePublicSourceAddress(
+    repo: _repo,
+    githubReleaseUrl: _status.githubReleaseUrl,
+  );
+
+  bool get canCheckUpdate => !_busy;
+  bool get canDownloadUpdate =>
+      !_busy &&
+      _status.updateAvailable &&
+      !_artifactDownloaded &&
+      _status.phase == ClientUpdatePhase.updateAvailable;
+
+  /// Apply is unlocked only by a verified artifact *and* a native idle
+  /// decision. A local busy flag, a label change or a closed card never
+  /// unlocks it.
+  bool get canApplyUpdate =>
+      !_busy &&
+      _artifactVerified &&
+      (_status.phase == ClientUpdatePhase.verified ||
+          _status.phase == ClientUpdatePhase.applyPlanned) &&
+      _status.admission.allowsMaintenance;
+
+  void selectTargetReleaseTrack(ReleaseTrack track) {
+    if (_busy ||
+        track == _status.targetReleaseTrack ||
+        (_status.runningReleaseTrack == ReleaseTrack.stable &&
+            track == ReleaseTrack.nightly)) {
+      return;
+    }
+    _targetReleaseTrack = track.wireName;
+    _clearArtifactBinding();
+    _status = _status.copyWith(
+      phase: ClientUpdatePhase.idle,
+      targetReleaseTrack: track,
+      availableVersion: '',
+      releaseNotesUrl: '',
+      githubReleaseUrl: '',
+      verifiedKeyIds: const [],
+      artifactSha256: '',
+      artifactReceiptId: '',
+      manifestSha256: '',
+      targetId: '',
+      stagedBytes: 0,
+      totalBytes: 0,
+      errorCode: '',
+      productionReady: false,
+      updateAvailable: false,
+      restartRequired: false,
+    );
+    publishChange();
+  }
+
+  /// Reads the running product version from native client-update identity
+  /// without treating a status failure as a user-facing check failure.
+  Future<void> hydrateIdentity({String targetReleaseTrack = ''}) async {
+    if (!_begin()) return;
+    _targetReleaseTrack = targetReleaseTrack.trim();
+    try {
+      await _resolveRoots();
+      final next = await _gateway.status(
+        agentService: _agentService,
+        targetReleaseTrack: _targetReleaseTrack,
+        source: 'local',
+        repo: _repo,
+        stateRoot: _stateRoot,
+      );
+      _adoptAdmission(next.admission);
+      if (next.runningVersion.isNotEmpty) {
+        _status = _status.copyWith(
+          runningVersion: next.runningVersion,
+          runningReleaseTrack: next.runningReleaseTrack,
+          targetReleaseTrack: next.targetReleaseTrack,
+        );
+      }
+    } catch (_) {
+      // Identity hydrate must not paint a failed check.
+    } finally {
+      _end();
+    }
+  }
+
+  /// Re-reads the host-wide maintenance answer and re-projects the apply gate.
+  ///
+  /// The answer is native-owned: this reads it, never decides it. An
+  /// unreadable answer stays fail closed, so a locked update can only be
+  /// unlocked by a new answer from the host.
+  Future<void> refreshAdmission() async {
+    if (!_begin()) return;
+    try {
+      await _refreshAdmissionLocked();
+    } catch (_) {
+      _adoptAdmission(const ClientUpdateAdmission.unavailable());
+    } finally {
+      _end();
+    }
+  }
+
+  /// One-click GitHub release source check that uses the bundled public keys
+  /// and requires no local manifest or keys files.
+  Future<void> checkGithub({String repo = kClientUpdateGithubRepo}) async {
+    if (_busy) return;
+    _clearArtifactBinding();
+    _source = 'github';
+    _repo = repo.trim().isEmpty ? kClientUpdateGithubRepo : repo.trim();
+    if (_status.runningVersion.isEmpty) {
+      await hydrateIdentity(targetReleaseTrack: _targetReleaseTrack);
+      if (_busy) return;
+    }
+    await _runCheck(
+      chinese: '正在从 GitHub 发布源检查已签名的客户端更新。',
+      english:
+          'Checking the signed client update from the GitHub release source.',
+    );
+  }
+
+  Future<void> check({
+    required String manifestPath,
+    required String publicKeysPath,
+    String targetReleaseTrack = '',
+    String revocationPath = '',
+  }) async {
+    if (_busy) return;
+    _clearArtifactBinding();
+    if (manifestPath.trim().isEmpty || publicKeysPath.trim().isEmpty) {
+      _report(
+        '需要已签名的更新清单与公钥文件。',
+        'A signed update manifest and public keys file are required.',
+        errorCode: 'client_update_check_invalid',
+      );
+      publishChange();
+      return;
+    }
+    _source = 'local';
+    _manifestPath = manifestPath.trim();
+    _publicKeysPath = publicKeysPath.trim();
+    _targetReleaseTrack = targetReleaseTrack.trim();
+    _revocationPath = revocationPath.trim();
+    if (_status.runningVersion.isEmpty) {
+      await hydrateIdentity(targetReleaseTrack: _targetReleaseTrack);
+      if (_busy) return;
+    }
+    await _runCheck(
+      chinese: '正在检查已签名的客户端更新。',
+      english: 'Checking for a signed client update.',
+    );
+  }
+
+  Future<void> _runCheck({
+    required String chinese,
+    required String english,
+  }) async {
+    _begin();
+    _status = ClientUpdateStatus(
+      phase: ClientUpdatePhase.checking,
+      runningVersion: _status.runningVersion,
+      runningReleaseTrack: _status.runningReleaseTrack,
+      targetReleaseTrack: _status.targetReleaseTrack,
+    );
+    _report(chinese, english);
+    publishChange();
+    try {
+      await _resolveRoots();
+      final checked = await _gateway.check(
+        agentService: _agentService,
+        manifestPath: _manifestPath,
+        publicKeysPath: _publicKeysPath,
+        targetReleaseTrack: _targetReleaseTrack,
+        revocationPath: _revocationPath,
+        source: _source,
+        repo: _repo,
+        stagingRoot: _stagingRoot,
+        stateRoot: _stateRoot,
+      );
+      if (!const {
+            ClientUpdatePhase.upToDate,
+            ClientUpdatePhase.updateAvailable,
+            ClientUpdatePhase.unavailable,
+          }.contains(checked.phase) ||
+          (checked.phase == ClientUpdatePhase.updateAvailable) !=
+              checked.updateAvailable) {
+        throw StateError('client_update_check_invalid_status');
+      }
+      if (checked.updateAvailable &&
+          (checked.artifactReceiptId.isEmpty ||
+              checked.artifactSha256.isEmpty ||
+              checked.manifestSha256.isEmpty ||
+              checked.targetId.isEmpty)) {
+        throw StateError('client_update_check_missing_artifact_receipt');
+      }
+      _status = _adopt(checked);
+      _artifactReceiptId = checked.artifactReceiptId;
+      if (_status.phase == ClientUpdatePhase.unavailable) {
+        _report(
+          '当前发布尚未提供客户端更新资料。',
+          'This release does not yet provide client update information.',
+          errorCode: 'client_update_metadata_unavailable',
+        );
+        return;
+      }
+      _report(
+        _status.updateAvailable
+            ? '发现已签名更新：${_status.availableVersion}'
+            : '已是最新版本。',
+        _status.updateAvailable
+            ? 'Signed update available: ${_status.availableVersion}'
+            : 'Already up to date.',
+      );
+    } catch (_) {
+      _fail('client_update_check_failed');
+      _report(
+        '客户端更新检查失败。',
+        'Client update check failed.',
+        errorCode: 'client_update_check_failed',
+      );
+    } finally {
+      _end();
+    }
+  }
+
+  /// Local flow: stage an artifact from a local file, then verify it.
+  Future<void> download({required String sourcePath}) async {
+    if (_busy) return;
+    if (!_hasCheckedArtifact || sourcePath.trim().isEmpty) {
+      _report(
+        '请先完成更新检查并选择本地更新包。',
+        'Check an update and select its local artifact first.',
+        errorCode: 'client_update_download_invalid',
+      );
+      publishChange();
+      return;
+    }
+    _source = 'local';
+    await _downloadStaged(sourcePath: sourcePath);
+  }
+
+  /// GitHub flow: stream the signed artifact url from the cached manifest,
+  /// then verify the staged file so apply can be enabled.
+  Future<void> downloadGithub() async {
+    if (_busy) return;
+    if (!_hasCheckedArtifact || _source != 'github') {
+      _report(
+        '请先从 GitHub 发布源完成更新检查。',
+        'Check the GitHub release source for an update first.',
+        errorCode: 'client_update_download_invalid',
+      );
+      publishChange();
+      return;
+    }
+    await _downloadStaged(sourcePath: '');
+  }
+
+  Future<void> _downloadStaged({required String sourcePath}) async {
+    _begin();
+    _status = _status.copyWith(phase: ClientUpdatePhase.downloading);
+    publishChange();
+    await _resolveRoots();
+    try {
+      final downloaded = await _gateway.download(
+        agentService: _agentService,
+        manifestPath: _manifestPath,
+        publicKeysPath: _publicKeysPath,
+        sourcePath: sourcePath,
+        revocationPath: _revocationPath,
+        source: _source,
+        repo: _repo,
+        stagingRoot: _stagingRoot,
+        stateRoot: _stateRoot,
+      );
+      _requireMatchingReceipt(downloaded, 'download');
+      _status = _adopt(downloaded);
+      _artifactDownloaded = true;
+      _artifactVerified = false;
+      await _verifyUnlocked();
+      _report('更新包已下载到本地并完成校验。', 'Update artifact downloaded and verified.');
+    } catch (_) {
+      _artifactDownloaded = false;
+      _artifactVerified = false;
+      _fail('client_update_download_failed');
+      _report(
+        '更新包下载失败。',
+        'Update artifact download failed.',
+        errorCode: 'client_update_download_failed',
+      );
+    } finally {
+      _end();
+    }
+  }
+
+  Future<void> verify() async {
+    if (_busy) return;
+    if (!_artifactDownloaded) {
+      _report(
+        '请先完成更新检查与下载。',
+        'Check and download an update first.',
+        errorCode: 'client_update_verify_invalid',
+      );
+      publishChange();
+      return;
+    }
+    _begin();
+    try {
+      await _verifyUnlocked();
+      _report(
+        '更新包签名与摘要校验通过。',
+        'Update artifact signature and digest verified.',
+      );
+    } catch (_) {
+      _artifactVerified = false;
+      _fail('client_update_verify_failed');
+      _report(
+        '更新包校验失败。',
+        'Update artifact verification failed.',
+        errorCode: 'client_update_verify_failed',
+      );
+    } finally {
+      _end();
+    }
+  }
+
+  Future<void> _verifyUnlocked() async {
+    _status = _status.copyWith(phase: ClientUpdatePhase.verifying);
+    publishChange();
+    await _resolveRoots();
+    final verified = await _gateway.verify(
+      agentService: _agentService,
+      manifestPath: _manifestPath,
+      publicKeysPath: _publicKeysPath,
+      revocationPath: _revocationPath,
+      source: _source,
+      repo: _repo,
+      stagingRoot: _stagingRoot,
+      stateRoot: _stateRoot,
+    );
+    _requireMatchingReceipt(verified, 'verify');
+    _status = _adopt(verified);
+    _artifactVerified = true;
+    // Re-project the visible phase from whatever admission answer rode along,
+    // so a verified artifact whose host still refuses maintenance renders
+    // blocked rather than an unlocked restart.
+    _adoptAdmission(_status.admission);
+  }
+
+  Future<void> planApply() async {
+    await _apply(execute: false);
+  }
+
+  /// Executes the live apply through the native script and invokes
+  /// `exitClient` once the applied phase confirms so the detached updater
+  /// script can replace the installation and relaunch the new version.
+  Future<void> applyThenExit(void Function() exitClient) async {
+    final applied = await _apply(execute: true);
+    if (applied && _status.phase == ClientUpdatePhase.applied) {
+      exitClient();
+    }
+  }
+
+  Future<bool> _apply({required bool execute}) async {
+    if (_busy) return false;
+    if (!_artifactVerified) {
+      _report(
+        '请先完成更新校验。',
+        'Verify an update first.',
+        errorCode: 'client_update_apply_invalid',
+      );
+      publishChange();
+      return false;
+    }
+    _begin();
+    await _resolveRoots();
+    try {
+      // The native decision is read immediately before the switch. A locked or
+      // unreadable answer refuses here, so no local state can approve an
+      // installed-state change the host still refuses.
+      try {
+        await _refreshAdmissionLocked();
+      } catch (_) {
+        _adoptAdmission(const ClientUpdateAdmission.unavailable());
+      }
+      final lock = execute ? _status.admission.lockReasonCode : '';
+      if (lock.isNotEmpty) {
+        _report(
+          '仍有未完成的任务，更新已锁定。请先停止它们。',
+          'Unfinished work still blocks this update. Stop it first.',
+          errorCode: lock,
+        );
+        return false;
+      }
+      final applied = await _gateway.apply(
+        agentService: _agentService,
+        execute: execute,
+        manifestPath: _manifestPath,
+        publicKeysPath: _publicKeysPath,
+        revocationPath: _revocationPath,
+        source: _source,
+        repo: _repo,
+        stagingRoot: _stagingRoot,
+        stateRoot: _stateRoot,
+        dataRoot: _dataRoot,
+      );
+      _requireMatchingReceipt(applied, 'apply');
+      _status = _adopt(applied);
+      _report(
+        execute ? '更新安装已调度，客户端即将重启。' : '已生成更新安装计划（未实际执行）。',
+        execute
+            ? 'Update install scheduled; the client will restart.'
+            : 'Update install plan prepared (not executed).',
+      );
+      return true;
+    } catch (_) {
+      _fail('client_update_apply_failed');
+      _report(
+        execute ? '更新安装失败。' : '更新安装计划失败。',
+        execute ? 'Update install failed.' : 'Update install planning failed.',
+        errorCode: 'client_update_apply_failed',
+      );
+      return false;
+    } finally {
+      _end();
+    }
+  }
+
+  bool get _hasCheckedArtifact =>
+      (_manifestPath.isNotEmpty || _source == 'github') &&
+      _artifactReceiptId.isNotEmpty &&
+      _status.updateAvailable;
+
+  /// Reads the host-wide maintenance answer through the same native status
+  /// surface and re-projects the visible phase from it.
+  Future<void> _refreshAdmissionLocked() async {
+    await _resolveRoots();
+    final observed = await _gateway.status(
+      agentService: _agentService,
+      targetReleaseTrack: _targetReleaseTrack,
+      source: 'local',
+      repo: _repo,
+      stateRoot: _stateRoot,
+    );
+    _adoptAdmission(observed.admission);
+  }
+
+  /// Adopts one native answer and keeps the visible phase honest: a verified
+  /// artifact whose host still refuses maintenance renders [blocked] instead of
+  /// a restart that would be refused.
+  void _adoptAdmission(ClientUpdateAdmission admission) {
+    var phase = _status.phase;
+    var errorCode = _status.errorCode;
+    if (_artifactVerified) {
+      if (!admission.allowsMaintenance &&
+          (phase == ClientUpdatePhase.verified ||
+              phase == ClientUpdatePhase.applyPlanned)) {
+        phase = ClientUpdatePhase.blocked;
+      } else if (admission.allowsMaintenance &&
+          phase == ClientUpdatePhase.blocked) {
+        phase = ClientUpdatePhase.verified;
+      }
+      if (phase == ClientUpdatePhase.blocked ||
+          phase == ClientUpdatePhase.verified) {
+        // Carry the lock reason in the one field the settings projection
+        // already publishes, so a changed host answer reaches the card.
+        errorCode = admission.lockReasonCode;
+      }
+    }
+    _status = _status.copyWith(
+      phase: phase,
+      errorCode: errorCode,
+      admission: admission,
+    );
+  }
+
+  ClientUpdateStatus _adopt(ClientUpdateStatus next) {
+    if (next.runningVersion.isNotEmpty) return next;
+    return next.copyWith(runningVersion: _status.runningVersion);
+  }
+
+  void _requireMatchingReceipt(ClientUpdateStatus next, String phase) {
+    if (next.artifactReceiptId.isEmpty ||
+        next.artifactReceiptId != _artifactReceiptId ||
+        next.artifactSha256.isEmpty) {
+      throw StateError('client_update_${phase}_receipt_mismatch');
+    }
+  }
+
+  void _clearArtifactBinding() {
+    _artifactReceiptId = '';
+    _artifactDownloaded = false;
+    _artifactVerified = false;
+  }
+
+  Future<void> _resolveRoots() async {
+    if (_rootsResolved) return;
+    final resolver = _dataDirectory;
+    if (resolver != null) {
+      final dataDir = await resolver();
+      _dataRoot = dataDir;
+      _stagingRoot = '$dataDir/client-update-staging';
+      _stateRoot = '$dataDir/client-update-state';
+    }
+    _rootsResolved = true;
+  }
+
+  bool _begin() {
+    if (_busy) return false;
+    _busy = true;
+    publishChange();
+    return true;
+  }
+
+  void _end() {
+    _busy = false;
+    publishChange();
+  }
+
+  void _fail(String code) {
+    _status = _status.copyWith(
+      phase: ClientUpdatePhase.failed,
+      errorCode: code,
+      updateAvailable: false,
+    );
+  }
+
+  void _report(String chinese, String english, {String errorCode = ''}) {
+    _onStatus(
+      ClientUpdateStatusUpdate(
+        chinese: chinese,
+        english: english,
+        errorCode: errorCode,
+      ),
+    );
+  }
+}

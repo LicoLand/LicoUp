@@ -1,0 +1,102 @@
+{
+  "schemaVersion": "licoup.client-release-template.v3",
+  "versionAuthority": {
+    "path": "tools/client-version.json"
+  },
+  "promotion": {
+    "branches": [
+      "nightly",
+      "stable",
+      "release"
+    ],
+    "mergeMethod": "merge",
+    "rulesetMutation": "forbidden",
+    "linearHistory": false,
+    "edges": [
+      {
+        "head": "action-prefixed",
+        "base": "nightly",
+        "requiredAggregate": "Client required"
+      },
+      {
+        "head": "nightly",
+        "base": "stable",
+        "requiredAggregate": "Stable client"
+      },
+      {
+        "head": "stable",
+        "base": "release",
+        "requiredAggregate": "Release ready"
+      }
+    ],
+    "commonRequiredChecks": [
+      "Branch flow",
+      "Commit identity"
+    ]
+  },
+  "publication": {
+    "owner": "release-plane-service",
+    "config": "tools/release-plane/macos-direct-arm64.json",
+    "profiles": {
+      "nightly": {
+        "config": "tools/release-plane/macos-direct-arm64-nightly.json",
+        "sourceBranch": "nightly",
+        "releaseTrack": "nightly",
+        "tag": "nightly",
+        "mutablePrerelease": true
+      },
+      "stable": {
+        "config": "tools/release-plane/macos-direct-arm64.json",
+        "sourceBranch": "release",
+        "releaseTrack": "stable",
+        "tag": "v{version}",
+        "mutablePrerelease": false
+      }
+    },
+    "sourceBranch": "release",
+    "repositoryMutation": "forbidden",
+    "authorizationCount": 1,
+    "interactiveAfterAuthorization": false,
+    "assetRoles": [
+      "installer",
+      "installer-digest",
+      "update-archive",
+      "update-digest",
+      "update-manifest",
+      "independent-tool",
+      "independent-tool-digest"
+    ],
+    "exactDraftAssetSetRequired": true,
+    "independentPackageAssets": {
+      "payloadRoles": [
+        "claude-code-adapter-package-payload",
+        "antigravity-adapter-package-payload",
+        "kilo-adapter-package-payload",
+        "codex-adapter-package-payload",
+        "openclaw-adapter-package-payload",
+        "copilot-adapter-package-payload",
+        "pi-adapter-package-payload",
+        "appearance-converter-package-payload",
+        "analytics-package-payload",
+        "gateway-package-payload",
+        "cursor-adapter-package-payload",
+        "deepseek-adapter-package-payload",
+        "kimi-adapter-package-payload",
+        "hermes-adapter-package-payload",
+        "lico-agent-adapter-package-payload",
+        "opencode-adapter-package-payload",
+        "mcp-package-payload",
+        "telegram-channel-package-payload",
+        "package-payload"
+      ],
+      "indexRole": "package-index",
+      "producer": "tools/scripts/client-release-package-index.mjs",
+      "clientDraftCarries": false,
+      "signedIndexRequired": true
+    },
+    "anonymousPublicInstallerDownloadRequired": true,
+    "publicInstallerDigestRequired": true,
+    "independentToolSignatureNotaryAndPublicDigestRequired": true,
+    "publicInstallAndStableLaunchRequired": true
+  }
+}

@@ -1,0 +1,832 @@
+import 'dart:async';
+
+import 'package:licoup/src/application/features/targets/controller/target_controller.dart';
+import 'package:licoup/src/application/features/targets/policy/target_policy.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+import 'package:licoup/src/contracts/target_management.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('cached runtime binding does not wait for the model catalog', () async {
+    final modelGate = Completer<void>();
+    final modelStarted = Completer<void>();
+    final candidate = _cursor(modelCatalog: const {});
+    final gateway = _Gateway(
+      probes: {'cursor': candidate},
+      selectedProbes: {
+        'cursor': candidate.withModelCatalog({
+          'sources': ['cursor-cli'],
+          'models': [
+            {'name': 'fresh-model'},
+          ],
+        }),
+      },
+      modelGate: modelGate,
+      modelStarted: modelStarted,
+    );
+    final controller = TargetController(
+      gateway: gateway,
+      snapshotRepository: _SnapshotRepository()
+        ..loaded = [
+          TargetCandidate.fromJson({...candidate.toJson(), 'binaryPath': null}),
+        ],
+      tabOrderRepository: _TabOrderRepository(),
+      portableData: Object(),
+      packagedTargetIds: const ['cursor'],
+      isMobileRuntime: () => false,
+      onTargetsSettled: () {},
+      loadSelectedConversation: () async {},
+      shouldLoadSelectedConversation: () => false,
+      onStatus: (_) {},
+    );
+    addTearDown(() {
+      if (!modelGate.isCompleted) modelGate.complete();
+      controller.dispose();
+    });
+    await controller.hydrateCache();
+    var bound = false;
+    final binding = controller
+        .ensureConversationRuntimeBinding('cursor')
+        .then((value) => bound = value);
+    await modelStarted.future;
+    await Future<void>.delayed(Duration.zero);
+    expect(bound, isTrue, reason: 'Model discovery must not block history.');
+    expect(controller.isRefreshingNativeModelCatalog('cursor'), isTrue);
+    expect(gateway.catalogLookups, [false, true]);
+    modelGate.complete();
+    await binding;
+    while (controller.isRefreshingNativeModelCatalog('cursor')) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(
+      (controller.targets.single.modelCatalog['models'] as List).single['name'],
+      'fresh-model',
+    );
+  });
+
+  test(
+    'cache restore uses current catalog and preserves manual lanes',
+    () async {
+      final manual = TargetCandidate.fromJson({
+        ..._target('workbuddy').toJson(),
+        'manual': true,
+      });
+      final registered = _target('custom-cli-agent');
+      final snapshots = _SnapshotRepository()
+        ..loaded = [
+          _target('retired-agent'),
+          _target('kimi-code'),
+          manual,
+          registered,
+        ];
+      final gateway = _Gateway(
+        catalogIds: {'kimi-code', 'workbuddy', 'custom-cli-agent'},
+      );
+      final controller = TargetController(
+        gateway: gateway,
+        snapshotRepository: snapshots,
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const ['kimi-code'],
+        isMobileRuntime: () => false,
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async {},
+        shouldLoadSelectedConversation: () => false,
+        onStatus: (_) {},
+      );
+      addTearDown(controller.dispose);
+
+      await controller.hydrateCache();
+
+      expect(controller.targets.map((target) => target.target), [
+        'kimi-code',
+        'workbuddy',
+        'custom-cli-agent',
+      ]);
+      expect(controller.targets[1], same(manual));
+      expect(controller.targets[2], same(registered));
+      expect(gateway.scanCounts, isEmpty);
+      expect(snapshots.loaded, hasLength(4));
+      expect(snapshots.saveCalls, 0);
+    },
+  );
+
+  test('unavailable catalog skips cache without deleting it', () async {
+    final snapshots = _SnapshotRepository()..loaded = [_target('codex')];
+    final controller = TargetController(
+      gateway: _Gateway(failCatalog: true),
+      snapshotRepository: snapshots,
+      tabOrderRepository: _TabOrderRepository(),
+      portableData: Object(),
+      packagedTargetIds: const ['codex'],
+      isMobileRuntime: () => false,
+      onTargetsSettled: () {},
+      loadSelectedConversation: () async {},
+      shouldLoadSelectedConversation: () => false,
+      onStatus: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    await controller.hydrateCache();
+
+    expect(controller.targets, isEmpty);
+    expect(snapshots.loaded.single.target, 'codex');
+    expect(snapshots.saveCalls, 0);
+  });
+
+  test('incremental plan skips known targets unless explicitly rescanned', () {
+    final known = [_target('codex')];
+    expect(
+      TargetPolicy.incrementalScanIds(
+        packagedIds: const ['codex', 'claude-code', 'opencode'],
+        currentTargets: known,
+        rescanKnown: false,
+      ),
+      ['claude-code', 'opencode'],
+    );
+    expect(
+      TargetPolicy.incrementalScanIds(
+        packagedIds: const ['codex', 'claude-code'],
+        currentTargets: known,
+        rescanKnown: true,
+      ),
+      ['codex', 'claude-code'],
+    );
+  });
+
+  test('ordering preserves unknown persisted ids and honors pins', () {
+    final ordered = TargetPolicy.orderedConversationTargets(
+      targets: [_target('codex'), _target('opencode')],
+      persistedOrder: const ['opencode', 'missing', 'codex'],
+      pinnedIds: const ['opencode'],
+    );
+    expect(ordered.map((target) => target.target), ['opencode', 'codex']);
+
+    final pinnedCodex = TargetPolicy.orderedConversationTargets(
+      targets: [_target('codex'), _target('opencode')],
+      persistedOrder: const ['opencode', 'codex'],
+      pinnedIds: const ['codex'],
+    );
+    expect(pinnedCodex.map((target) => target.target), ['codex', 'opencode']);
+
+    final next = TargetPolicy.reorderedTabIds(
+      visibleTargets: ordered,
+      persistedOrder: const ['opencode', 'missing', 'codex'],
+      oldIndex: 1,
+      newIndex: 0,
+    );
+    expect(next, ['codex', 'opencode', 'missing']);
+  });
+
+  test('unused scan keeps a selected-agent model catalog', () {
+    final selected = _cursor(
+      modelCatalog: {
+        'sources': ['cursor-cli'],
+        'models': [
+          {'name': 'composer-2.5'},
+          {'name': 'auto'},
+        ],
+      },
+    );
+    final scan = _cursor(
+      modelCatalog: {
+        'sources': ['config'],
+        'models': [
+          {'name': 'stale-cursor-model'},
+        ],
+      },
+    );
+    final merged = TargetPolicy.mergeProbe(
+      [selected],
+      'cursor',
+      scan,
+      replaceModelCatalog: false,
+    );
+    expect(merged.single.modelCatalog['sources'], ['cursor-cli']);
+    expect(
+      (merged.single.modelCatalog['models'] as List).map(
+        (model) => (model as Map)['name'],
+      ),
+      ['composer-2.5', 'auto'],
+    );
+  });
+
+  test('Kilo editor history remains a fallback until CLI catalog refresh', () {
+    final historyOnly = _target('kilo-code').withModelCatalog({
+      'sources': ['kilo-vscode-state'],
+      'models': [
+        {'name': 'recent-only'},
+      ],
+    });
+    final native = _target('kilo-code').withModelCatalog({
+      'sources': ['kilo-cli'],
+      'models': [
+        {'name': 'kilo/kilo-auto/free'},
+      ],
+    });
+
+    expect(historyOnly.hasSelectedAgentModelCatalog, isFalse);
+    expect(native.hasSelectedAgentModelCatalog, isTrue);
+    expect(
+      _target('opencode').withModelCatalog({
+        'sources': ['opencode-cli:models'],
+      }).hasSelectedAgentModelCatalog,
+      isTrue,
+    );
+  });
+
+  test('Claude settings model list is a settled native catalog', () {
+    final target = _target('claude-code').withModelCatalog({
+      'sources': ['claude-settings'],
+      'models': [
+        {'name': 'configured-current-model'},
+      ],
+    });
+
+    expect(target.hasSelectedAgentModelCatalog, isTrue);
+  });
+
+  test(
+    'DeepSeek installed catalog settles once while explicit refresh still probes',
+    () async {
+      final incomplete = _deepSeek(modelCatalog: const {});
+      final complete = _deepSeek(
+        modelCatalog: {
+          'sources': ['deepseek-harness-installed-adapter'],
+          'models': [
+            {
+              'name': 'deepseek-flash',
+              'providerId': 'deepseek-official',
+              'reasoningEfforts': ['off', 'low', 'high', 'max'],
+            },
+          ],
+        },
+      );
+      final gateway = _Gateway(
+        probes: {'deepseek-harness': incomplete},
+        selectedProbes: {'deepseek-harness': complete},
+      );
+      final controller = TargetController(
+        gateway: gateway,
+        snapshotRepository: _SnapshotRepository(),
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const ['deepseek-harness'],
+        isMobileRuntime: () => false,
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async {},
+        shouldLoadSelectedConversation: () => false,
+        onStatus: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.replaceTargets([incomplete]);
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('deepseek-harness'),
+        isTrue,
+      );
+      while (controller.isRefreshingNativeModelCatalog('deepseek-harness')) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(gateway.catalogLookups, [true]);
+      expect(controller.targets.single.hasSelectedAgentModelCatalog, isTrue);
+      expect(
+        (controller.targets.single.modelCatalog['models'] as List)
+            .single['name'],
+        'deepseek-flash',
+      );
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('deepseek-harness'),
+        isTrue,
+      );
+      expect(gateway.catalogLookups, [true]);
+
+      await controller.refreshAgentModelCatalogs(const ['deepseek-harness']);
+      expect(gateway.catalogLookups, [true, true]);
+    },
+  );
+
+  test(
+    'a persisted native catalog is refreshed once in each process',
+    () async {
+      final persisted = _cursor(
+        modelCatalog: {
+          'sources': ['cursor-cli'],
+          'models': [
+            {'name': 'persisted'},
+          ],
+        },
+      );
+      final refreshed = _cursor(
+        modelCatalog: {
+          'sources': ['cursor-cli'],
+          'models': [
+            {'name': 'fresh'},
+          ],
+        },
+      );
+      final gateway = _Gateway(
+        probes: {'cursor': persisted},
+        selectedProbes: {'cursor': refreshed},
+      );
+      final controller = TargetController(
+        gateway: gateway,
+        snapshotRepository: _SnapshotRepository(),
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const ['cursor'],
+        isMobileRuntime: () => false,
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async {},
+        shouldLoadSelectedConversation: () => false,
+        onStatus: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.replaceTargets([persisted]);
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('cursor'),
+        isTrue,
+      );
+      await Future<void>.delayed(Duration.zero);
+      while (controller.isRefreshingNativeModelCatalog('cursor')) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(gateway.catalogLookups, [true]);
+      expect(
+        (controller.targets.single.modelCatalog['models'] as List)
+            .single['name'],
+        'fresh',
+      );
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('cursor'),
+        isTrue,
+      );
+      expect(gateway.catalogLookups, [true]);
+    },
+  );
+
+  test(
+    'opening a bound agent conversation interface refreshes its native model catalog once',
+    () async {
+      final incomplete = _cursor(
+        modelCatalog: {
+          'sources': ['config'],
+          'models': [
+            {'name': 'stale-cursor-model'},
+          ],
+        },
+      );
+      final complete = _cursor(
+        modelCatalog: {
+          'sources': ['cursor-cli'],
+          'models': [
+            {'name': 'auto'},
+            {'name': 'composer-2.5'},
+          ],
+        },
+      );
+      final gateway = _Gateway(
+        probes: {'cursor': incomplete},
+        selectedProbes: {'cursor': complete},
+      );
+      final controller = TargetController(
+        gateway: gateway,
+        snapshotRepository: _SnapshotRepository(),
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const ['cursor'],
+        isMobileRuntime: () => false,
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async {},
+        shouldLoadSelectedConversation: () => false,
+        onStatus: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.replaceTargets([incomplete]);
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('cursor'),
+        isTrue,
+      );
+      final deadline = DateTime.now().add(const Duration(seconds: 1));
+      while (!controller.targets.single.hasSelectedAgentModelCatalog &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(gateway.catalogLookups, [true]);
+      expect(
+        controller.targets.single.modelCatalog['sources'],
+        contains('cursor-cli'),
+      );
+      expect(
+        (controller.targets.single.modelCatalog['models'] as List).length,
+        2,
+      );
+
+      expect(
+        await controller.ensureConversationRuntimeBinding('cursor'),
+        isTrue,
+      );
+      expect(gateway.catalogLookups, [true]);
+    },
+  );
+
+  test('conversation order keeps host installs and drops automatic VMs', () {
+    final workingDirectory = ['', 'srv', 'project'].join('/');
+    final ordered = TargetPolicy.orderedConversationTargets(
+      targets: [
+        _target('codex'),
+        TargetCandidate(
+          target: 'hermes',
+          label: 'Hermes Agent',
+          kind: 'cli',
+          status: 'detected',
+          configured: true,
+          confidence: 1,
+          binaryPath: 'hermes',
+          adapterStatus: 'implemented',
+          location: 'virtual-machine',
+          scanSource: 'virtual-machine-orbstack',
+          runtimeConnection: {
+            'kind': 'ssh',
+            'host': 'orb',
+            'remoteExecutable': 'hermes',
+            'workingDirectory': workingDirectory,
+            'runtimeProtocol': 'hermes-tui-gateway',
+          },
+        ),
+        TargetCandidate(
+          target: 'openclaw',
+          label: 'OpenClaw',
+          kind: 'cli',
+          status: 'not-detected',
+          configured: false,
+          confidence: 0.15,
+          adapterStatus: 'implemented',
+        ),
+      ],
+      persistedOrder: const ['hermes', 'openclaw', 'codex'],
+    );
+    expect(ordered.map((target) => target.target), ['codex']);
+  });
+
+  test(
+    'controller probes concurrently and publishes one settled snapshot',
+    () async {
+      final gateway = _Gateway(
+        probes: {
+          'codex': _target('codex'),
+          'claude-code': _target('claude-code'),
+        },
+        delays: const {
+          'codex': Duration(milliseconds: 35),
+          'claude-code': Duration(milliseconds: 2),
+        },
+      );
+      final snapshots = _SnapshotRepository();
+      final controller = TargetController(
+        gateway: gateway,
+        snapshotRepository: snapshots,
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const ['codex', 'claude-code'],
+        isMobileRuntime: () => false,
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async {},
+        shouldLoadSelectedConversation: () => false,
+        onStatus: (_) {},
+      );
+      addTearDown(controller.dispose);
+      final observations = <List<String>>[];
+      controller.changes.listen((_) {
+        observations.add(
+          controller.targets.map((target) => target.target).toList(),
+        );
+      });
+
+      await controller.scan(showProgress: false);
+
+      expect(gateway.maxInFlight, 2);
+      expect(
+        controller.targets.map((target) => target.target),
+        containsAll(['codex', 'claude-code']),
+      );
+      expect(
+        observations.where((ids) => ids.isNotEmpty),
+        everyElement(containsAll(['codex', 'claude-code'])),
+      );
+      expect(snapshots.saved, isNotEmpty);
+      expect(snapshots.saveCalls, 1);
+    },
+  );
+
+  test(
+    'controller emits allowlisted error codes without raw exceptions',
+    () async {
+      final updates = <TargetStatusUpdate>[];
+      final controller = TargetController(
+        gateway: _Gateway(failTools: true),
+        snapshotRepository: _SnapshotRepository(),
+        tabOrderRepository: _TabOrderRepository(),
+        portableData: Object(),
+        packagedTargetIds: const [],
+        isMobileRuntime: () => false,
+        onTargetsSettled: () {},
+        loadSelectedConversation: () async {},
+        shouldLoadSelectedConversation: () => false,
+        onStatus: updates.add,
+      );
+      addTearDown(controller.dispose);
+
+      await controller.inspectTarget('codex');
+
+      expect(controller.lastErrorCode, 'target_inspect_failed');
+      expect(updates.last.errorCode, 'target_inspect_failed');
+      expect(updates.last.english, isNot(contains('private-runtime-detail')));
+    },
+  );
+
+  test('conversation history load failure does not fail the scan', () async {
+    final updates = <TargetStatusUpdate>[];
+    final controller = TargetController(
+      gateway: _Gateway(probes: {'codex': _target('codex')}),
+      snapshotRepository: _SnapshotRepository(),
+      tabOrderRepository: _TabOrderRepository(),
+      portableData: Object(),
+      packagedTargetIds: const ['codex'],
+      isMobileRuntime: () => false,
+      onTargetsSettled: () {},
+      loadSelectedConversation: () async =>
+          throw StateError('native history read failed'),
+      shouldLoadSelectedConversation: () => true,
+      onStatus: updates.add,
+    );
+    addTearDown(controller.dispose);
+
+    await controller.scan(showProgress: true);
+
+    // The scan itself succeeded; the history read failure must not be
+    // reported as a scan failure nor leave the busy flag set.
+    expect(controller.lastErrorCode, isEmpty);
+    expect(
+      updates.map((update) => update.errorCode),
+      isNot(contains('target_scan_failed')),
+    );
+    expect(controller.isScanning, isFalse);
+    expect(
+      controller.targets.map((target) => target.target),
+      contains('codex'),
+    );
+  });
+
+  test('slow conversation history load does not block later scans', () async {
+    final gateway = _Gateway(probes: {'codex': _target('codex')});
+    final loadGate = Completer<void>();
+    var loadCalls = 0;
+    final controller = TargetController(
+      gateway: gateway,
+      snapshotRepository: _SnapshotRepository(),
+      tabOrderRepository: _TabOrderRepository(),
+      portableData: Object(),
+      packagedTargetIds: const ['codex'],
+      isMobileRuntime: () => false,
+      onTargetsSettled: () {},
+      loadSelectedConversation: () {
+        loadCalls += 1;
+        return loadGate.future;
+      },
+      shouldLoadSelectedConversation: () => true,
+      onStatus: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    final firstScan = controller.scan(showProgress: true);
+    // Wait until the first scan released the refresh gate and entered the
+    // history load.
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    final secondScan = controller.scan(
+      showProgress: true,
+      forceRescanKnown: true,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    loadGate.complete();
+    await Future.wait([firstScan, secondScan]);
+
+    expect(
+      gateway.scanCounts['codex'],
+      2,
+      reason: 'the history load must not hold the refresh gate',
+    );
+    expect(loadCalls, 2);
+    expect(controller.isScanning, isFalse);
+  });
+
+  test('concurrent forced scans coalesce after an active quiet scan', () async {
+    final gateway = _Gateway(
+      probes: {'codex': _target('codex')},
+      delays: const {'codex': Duration(milliseconds: 25)},
+    );
+    final controller = TargetController(
+      gateway: gateway,
+      snapshotRepository: _SnapshotRepository(),
+      tabOrderRepository: _TabOrderRepository(),
+      portableData: Object(),
+      packagedTargetIds: const ['codex'],
+      isMobileRuntime: () => false,
+      onTargetsSettled: () {},
+      loadSelectedConversation: () async {},
+      shouldLoadSelectedConversation: () => false,
+      onStatus: (_) {},
+    );
+    addTearDown(controller.dispose);
+
+    final quietScan = controller.scan(showProgress: false);
+    await Future<void>.delayed(const Duration(milliseconds: 1));
+    final forcedScans = [
+      for (var index = 0; index < 3; index += 1)
+        controller.scan(showProgress: true, forceRescanKnown: true),
+    ];
+    await Future.wait([quietScan, ...forcedScans]);
+
+    expect(gateway.scanCounts['codex'], 2);
+    expect(controller.isScanning, isFalse);
+  });
+}
+
+TargetCandidate _target(String id) => TargetCandidate(
+  target: id,
+  label: id,
+  kind: 'cli',
+  status: 'detected',
+  configured: true,
+  confidence: 1,
+  adapterStatus: 'ready',
+);
+
+TargetCandidate _cursor({required Map<String, dynamic> modelCatalog}) =>
+    TargetCandidate(
+      target: 'cursor',
+      label: 'Cursor',
+      kind: 'cli',
+      status: 'detected',
+      configured: true,
+      confidence: 1,
+      binaryPath: ['', 'synthetic', 'bin', 'cursor-agent'].join('/'),
+      adapterStatus: 'implemented',
+      adapterCapabilities: const {'conversationDriver': 'implemented'},
+      modelCatalog: modelCatalog,
+    );
+
+TargetCandidate _deepSeek({required Map<String, dynamic> modelCatalog}) =>
+    TargetCandidate(
+      target: 'deepseek-harness',
+      label: 'DeepSeek Harness',
+      kind: 'cli',
+      status: 'detected',
+      configured: true,
+      confidence: 1,
+      binaryPath: ['', 'synthetic', 'bin', 'dsh'].join('/'),
+      adapterStatus: 'implemented',
+      adapterCapabilities: const {'conversationDriver': 'implemented'},
+      modelCatalog: modelCatalog,
+    );
+
+class _Gateway implements TargetManagementGateway {
+  _Gateway({
+    this.probes = const {},
+    this.selectedProbes = const {},
+    this.delays = const {},
+    this.failTools = false,
+    this.catalogIds,
+    this.failCatalog = false,
+    this.modelGate,
+    this.modelStarted,
+  });
+
+  final Map<String, TargetCandidate?> probes;
+  final Map<String, TargetCandidate?> selectedProbes;
+  final Map<String, Duration> delays;
+  final bool failTools;
+  final Set<String>? catalogIds;
+  final bool failCatalog;
+  final Completer<void>? modelGate;
+  final Completer<void>? modelStarted;
+
+  var _inFlight = 0;
+  var maxInFlight = 0;
+  final Map<String, int> scanCounts = {};
+  final List<bool> catalogLookups = [];
+
+  @override
+  Future<Set<String>> targetCatalogIds() async {
+    if (failCatalog) {
+      throw StateError('target_catalog_unavailable');
+    }
+    return catalogIds ?? probes.keys.toSet();
+  }
+
+  @override
+  Future<TargetScanBatch> scanTargetsBatch(
+    List<String> targetIds, {
+    bool enableAgentCliModelLookup = false,
+  }) async {
+    catalogLookups.add(enableAgentCliModelLookup);
+    final slots = await Future.wait([
+      for (final targetId in targetIds)
+        _scanTarget(
+          targetId,
+          enableAgentCliModelLookup: enableAgentCliModelLookup,
+        ),
+    ]);
+    return TargetScanBatch(slots);
+  }
+
+  Future<TargetScanSlot> _scanTarget(
+    String targetId, {
+    required bool enableAgentCliModelLookup,
+  }) async {
+    scanCounts.update(targetId, (count) => count + 1, ifAbsent: () => 1);
+    _inFlight += 1;
+    maxInFlight = _inFlight > maxInFlight ? _inFlight : maxInFlight;
+    try {
+      await Future<void>.delayed(delays[targetId] ?? Duration.zero);
+      if (enableAgentCliModelLookup) {
+        if (modelStarted?.isCompleted == false) modelStarted!.complete();
+        await modelGate?.future;
+      }
+      if (enableAgentCliModelLookup && selectedProbes.containsKey(targetId)) {
+        return TargetScanSlot(
+          targetId: targetId,
+          candidate: selectedProbes[targetId],
+        );
+      }
+      return TargetScanSlot(targetId: targetId, candidate: probes[targetId]);
+    } finally {
+      _inFlight -= 1;
+    }
+  }
+
+  Never _failure() => throw StateError('private-runtime-detail');
+
+  @override
+  Future<Map<String, dynamic>> addTarget({
+    required String target,
+    String configPath = '',
+    String binaryPath = '',
+    String historyRoot = '',
+    String location = 'local',
+    Map<String, dynamic> runtimeConnection = const <String, dynamic>{},
+  }) async => failTools ? _failure() : {'ok': true};
+
+  @override
+  Future<Map<String, dynamic>> inspectTarget(String target) async =>
+      failTools ? _failure() : {'target': target};
+
+  @override
+  Future<Map<String, dynamic>> restoreSnapshot(String snapshotId) async =>
+      failTools ? _failure() : {'snapshotId': snapshotId};
+}
+
+class _SnapshotRepository implements TargetSnapshotRepository {
+  List<TargetCandidate> loaded = const [];
+  List<TargetCandidate> saved = const [];
+  var saveCalls = 0;
+
+  @override
+  Future<List<TargetCandidate>> load(Object portableData) async => loaded;
+
+  @override
+  Future<void> save(Object portableData, List<TargetCandidate> targets) async {
+    saveCalls += 1;
+    saved = List.unmodifiable(targets);
+  }
+}
+
+class _TabOrderRepository implements TargetTabOrderRepository {
+  List<String> value = const [];
+  List<String> pinned = const [];
+  bool customPinned = false;
+
+  @override
+  Future<List<String>> load(Object portableData) async => value;
+
+  @override
+  Future<void> save(Object portableData, List<String> order) async {
+    value = List.unmodifiable(order);
+  }
+
+  @override
+  Future<List<String>> loadPinned(Object portableData) async => pinned;
+
+  @override
+  Future<void> savePinned(Object portableData, List<String> next) async {
+    pinned = List.unmodifiable(next);
+    customPinned = true;
+  }
+
+  @override
+  Future<bool> hasCustomPinnedIds(Object portableData) async => customPinned;
+}
