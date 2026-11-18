@@ -1,0 +1,394 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/contracts/presentation/layout_profile.dart';
+import 'package:licoup/src/contracts/presentation/layout_style.dart';
+import 'package:licoup/src/frontend/features/settings/ui/layout_profile_selector.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_registry.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+
+import 'fixtures/settings_binding_fixture.dart';
+import 'fixtures/settings_presentation_fixture.dart';
+import 'layout/layout_host_test_fixtures.dart';
+import 'layout/fixtures/layout_destination_presentation_fixture.dart';
+
+void main() {
+  testWidgets('renders localized registry previews on both surfaces', (
+    tester,
+  ) async {
+    final registry = buildFixtureLayoutRuntime().registry;
+    final source = SettingsProjectionFixture(settingsProjectionFixture());
+    final presentation = SettingsPresentationFixture();
+    final binding = settingsBindingFixture(source: source);
+    addTearDown(source.dispose);
+    addTearDown(presentation.dispose);
+
+    await _pumpSelector(
+      tester,
+      binding: binding,
+      registry: registry,
+      surface: LayoutRuntimeSurface.desktop,
+      locale: const Locale('zh'),
+      presentation: presentation,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('layout-profile-selector')),
+      findsOneWidget,
+    );
+    expect(find.text('工作台'), findsOneWidget);
+    expect(find.text('图集'), findsOneWidget);
+    expect(
+      find.byKey(const Key('fixture-preview-dashboard-desktop')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('fixture-preview-atlas-desktop')),
+      findsOneWidget,
+    );
+
+    await _pumpSelector(
+      tester,
+      binding: binding,
+      registry: registry,
+      surface: LayoutRuntimeSurface.mobile,
+      locale: const Locale('zh'),
+      presentation: presentation,
+    );
+    expect(
+      find.byKey(const Key('fixture-preview-dashboard-mobile')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('fixture-preview-atlas-mobile')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('dispatches semantic selection without owning persistence', (
+    tester,
+  ) async {
+    final registry = buildFixtureLayoutRuntime().registry;
+    final source = SettingsProjectionFixture(settingsProjectionFixture());
+    final presentation = SettingsPresentationFixture();
+    final intents = RecordingSettingsIntents();
+    final binding = settingsBindingFixture(source: source, intents: intents);
+    addTearDown(source.dispose);
+    addTearDown(presentation.dispose);
+    await _pumpSelector(
+      tester,
+      binding: binding,
+      registry: registry,
+      presentation: presentation,
+    );
+
+    await tester.tap(find.byKey(const Key('layout-profile-option-atlas')));
+    await tester.pump();
+    expect(intents.values, hasLength(1));
+    expect(intents.values.single, isA<SetLayoutPreference>());
+    expect((intents.values.single as SetLayoutPreference).profileId, 'atlas');
+  });
+
+  testWidgets('enumerates every profile in an arbitrary catalog', (
+    tester,
+  ) async {
+    final profiles = <LayoutProfileDescriptor>[
+      ...fixtureLayoutDescriptors(),
+      for (final id in ['canvas', 'focus', 'journal', 'matrix', 'orbit'])
+        LayoutProfileDescriptor(
+          id: LayoutProfileId.parse(id),
+          label: LayoutProfileCopy(english: id, chinese: '布局$id'),
+          description: LayoutProfileCopy(
+            english: '$id fixture layout',
+            chinese: '布局 $id 的测试说明',
+          ),
+          styleIdentity: 'fixture-$id',
+          isDefault: false,
+        ),
+    ];
+    final runtime = buildFixtureLayoutRuntime(profiles: profiles);
+    final projection = settingsProjectionFixture(
+      layoutChoices: [
+        for (final profile in profiles)
+          PresentationChoice(
+            id: profile.id.value,
+            label: profile.label.english,
+            selected: profile.id.value == 'dashboard',
+            enabled: profile.id.value != 'dashboard',
+          ),
+      ],
+    );
+    final source = SettingsProjectionFixture(projection);
+    final presentation = SettingsPresentationFixture(projection: projection);
+    final binding = settingsBindingFixture(source: source);
+    addTearDown(source.dispose);
+    addTearDown(presentation.dispose);
+    await _pumpSelector(
+      tester,
+      binding: binding,
+      registry: runtime.registry,
+      width: 860,
+      presentation: presentation,
+    );
+
+    for (final profile in profiles) {
+      expect(
+        find.byKey(Key('layout-profile-option-${profile.id.value}')),
+        findsOneWidget,
+      );
+    }
+  });
+
+  testWidgets('localizes committing and persistence failure states', (
+    tester,
+  ) async {
+    final registry = buildFixtureLayoutRuntime().registry;
+    final projection = settingsProjectionFixture(
+      layoutPhase: PresentationPhase.applying,
+    );
+    final source = SettingsProjectionFixture(projection);
+    final presentation = SettingsPresentationFixture(projection: projection);
+    final binding = settingsBindingFixture(source: source);
+    addTearDown(source.dispose);
+    addTearDown(presentation.dispose);
+    await _pumpSelector(
+      tester,
+      binding: binding,
+      registry: registry,
+      locale: const Locale('zh'),
+      presentation: presentation,
+    );
+    expect(find.text('正在保存布局…'), findsOneWidget);
+
+    presentation.publishProjection(
+      settingsProjectionFixture(
+        layoutPhase: PresentationPhase.failed,
+        layoutFailureReasonCode: 'persistenceFailed',
+        notice: const PresentationNotice(
+          id: 'settings-layout-failure',
+          title: 'Settings action failed',
+          message: 'Review the action and try again.',
+          severity: PresentationNoticeSeverity.error,
+          reasonCode: 'persistenceFailed',
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('无法保存布局，请稍后重试。'), findsOneWidget);
+  });
+
+  testWidgets('shows loading and supports keyboard with reduced motion', (
+    tester,
+  ) async {
+    final registry = buildFixtureLayoutRuntime().registry;
+    final projection = settingsProjectionFixture(
+      layoutPhase: PresentationPhase.loading,
+    );
+    final source = SettingsProjectionFixture(projection);
+    final presentation = SettingsPresentationFixture(projection: projection);
+    final intents = RecordingSettingsIntents();
+    final binding = settingsBindingFixture(source: source, intents: intents);
+    addTearDown(source.dispose);
+    addTearDown(presentation.dispose);
+    await _pumpSelector(
+      tester,
+      binding: binding,
+      registry: registry,
+      width: 360,
+      disableAnimations: true,
+      locale: const Locale('zh'),
+      presentation: presentation,
+    );
+    expect(find.byKey(const Key('layout-selector-loading')), findsOneWidget);
+
+    presentation.publishProjection(settingsProjectionFixture());
+    await tester.pump();
+    await tester.pump();
+    final options = tester.widgetList<AnimatedContainer>(
+      find.byType(AnimatedContainer),
+    );
+    expect(options, isNotEmpty);
+    expect(options.every((option) => option.duration == Duration.zero), isTrue);
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(intents.values.whereType<SetLayoutPreference>(), isNotEmpty);
+  });
+
+  group('column style control', () {
+    final styledDashboard = LayoutProfileDescriptor(
+      id: LayoutProfileId.parse('dashboard'),
+      label: LayoutProfileCopy(english: 'Dashboard', chinese: '工作台'),
+      description: LayoutProfileCopy(
+        english: 'Dashboard fixture',
+        chinese: '工作台夹具',
+      ),
+      styleIdentity: 'spacious-card-dashboard',
+      isDefault: true,
+      styles: [
+        LayoutStyleDescriptor(
+          id: LayoutStyleId.parse('plain'),
+          label: LayoutProfileCopy(english: 'Plain', chinese: '平铺'),
+        ),
+        LayoutStyleDescriptor(
+          id: LayoutStyleId.parse('card'),
+          label: LayoutProfileCopy(english: 'Card', chinese: '卡片'),
+        ),
+      ],
+      defaultStyleId: LayoutStyleId.parse('plain'),
+    );
+
+    final profiles = [styledDashboard, ...fixtureLayoutDescriptors().skip(1)];
+
+    List<PresentationChoice> styleChoices({String selected = 'plain'}) => [
+      PresentationChoice(
+        id: 'plain',
+        label: 'Plain',
+        selected: selected == 'plain',
+      ),
+      PresentationChoice(
+        id: 'card',
+        label: 'Card',
+        selected: selected == 'card',
+      ),
+    ];
+
+    testWidgets('shows the control for a styled profile on desktop and sends '
+        'SetLayoutStyle', (tester) async {
+      final runtime = buildFixtureLayoutRuntime(profiles: profiles);
+      final projection = settingsProjectionFixture(
+        layoutStyleChoices: styleChoices(),
+      );
+      final source = SettingsProjectionFixture(projection);
+      final presentation = SettingsPresentationFixture(projection: projection);
+      final intents = RecordingSettingsIntents();
+      final binding = settingsBindingFixture(source: source, intents: intents);
+      addTearDown(source.dispose);
+      addTearDown(presentation.dispose);
+
+      await _pumpSelector(
+        tester,
+        binding: binding,
+        registry: runtime.registry,
+        surface: LayoutRuntimeSurface.desktop,
+        presentation: presentation,
+      );
+
+      expect(find.byKey(const Key('layout-style-selector')), findsOneWidget);
+      expect(find.text('Plain'), findsOneWidget);
+      expect(find.text('Card'), findsOneWidget);
+
+      await tester.tap(find.text('Card'));
+      await tester.pump();
+      expect(intents.values, hasLength(1));
+      final intent = intents.values.single;
+      expect(intent, isA<SetLayoutStyle>());
+      final styleIntent = intent as SetLayoutStyle;
+      expect(styleIntent.profileId, 'dashboard');
+      expect(styleIntent.styleId, 'card');
+    });
+
+    testWidgets('hides the control when the committed profile declares no '
+        'styles', (tester) async {
+      final runtime = buildFixtureLayoutRuntime(profiles: profiles);
+      final projection = settingsProjectionFixture(
+        layoutId: 'atlas',
+        layoutStyleChoices: styleChoices(),
+      );
+      final source = SettingsProjectionFixture(projection);
+      final presentation = SettingsPresentationFixture(projection: projection);
+      final binding = settingsBindingFixture(source: source);
+      addTearDown(source.dispose);
+      addTearDown(presentation.dispose);
+
+      await _pumpSelector(
+        tester,
+        binding: binding,
+        registry: runtime.registry,
+        surface: LayoutRuntimeSurface.desktop,
+        presentation: presentation,
+      );
+
+      expect(find.byKey(const Key('layout-style-selector')), findsNothing);
+    });
+
+    testWidgets('hides the control on the mobile surface', (tester) async {
+      final runtime = buildFixtureLayoutRuntime(profiles: profiles);
+      final projection = settingsProjectionFixture(
+        layoutStyleChoices: styleChoices(),
+      );
+      final source = SettingsProjectionFixture(projection);
+      final presentation = SettingsPresentationFixture(projection: projection);
+      final binding = settingsBindingFixture(source: source);
+      addTearDown(source.dispose);
+      addTearDown(presentation.dispose);
+
+      await _pumpSelector(
+        tester,
+        binding: binding,
+        registry: runtime.registry,
+        surface: LayoutRuntimeSurface.mobile,
+        presentation: presentation,
+      );
+
+      expect(find.byKey(const Key('layout-style-selector')), findsNothing);
+    });
+  });
+}
+
+Future<void> _pumpSelector(
+  WidgetTester tester, {
+  required SettingsBinding binding,
+  required LayoutRegistry registry,
+  required SettingsPresentationFixture presentation,
+  LayoutRuntimeSurface surface = LayoutRuntimeSurface.desktop,
+  Locale locale = const Locale('en'),
+  double width = 860,
+  bool disableAnimations = false,
+}) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: presentation.overrides,
+      child: MaterialApp(
+        builder: (context, child) =>
+            FixtureLayoutPresentationScope(child: child!),
+        locale: locale,
+        supportedLocales: LicoStrings.supportedLocales,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        theme: buildLicoTheme(),
+        home: Scaffold(
+          body: MediaQuery(
+            data: MediaQueryData(disableAnimations: disableAnimations),
+            child: SingleChildScrollView(
+              child: SizedBox(
+                width: width,
+                child: LayoutProfileSelector(
+                  binding: binding,
+                  registry: registry,
+                  surface: surface,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  // Source observation opens and the runtime's first install both complete
+  // asynchronously; the second pump installs the initial frame.
+  await tester.pump();
+  await tester.pump();
+}

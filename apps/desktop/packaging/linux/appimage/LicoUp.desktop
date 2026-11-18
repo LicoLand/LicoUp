@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=LicoUp
+Comment=Official LicoUp client
+Exec=licoup
+Icon=land.lico.licoup
+Categories=Network;Utility;
+Terminal=false

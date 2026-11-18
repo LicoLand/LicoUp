@@ -1,0 +1,1358 @@
+import 'package:licoup/src/frontend/shared/ui/lico_loading_indicator.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_list_typography.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_selection_highlight.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:file_selector/file_selector.dart';
+import 'package:path/path.dart' as p;
+import 'package:licoup/src/frontend/appearance/loading_effect_catalog.dart';
+import 'package:presentation_contract/presentation_contract.dart';
+import 'package:presentation_flutter/presentation_flutter.dart';
+
+import 'package:licoup/src/contracts/presentation/reduce_motion_preference.dart';
+import 'package:licoup/src/contracts/appearance/appearance_preset_config.dart';
+import 'package:licoup/src/presentation/environment/locale_preferences.dart';
+import 'package:licoup/src/contracts/presentation/layout_environment.dart';
+import 'package:licoup/src/frontend/layout/layout_state_port.dart';
+import 'package:licoup/src/contracts/presentation/layout_state_namespace.dart';
+import 'package:licoup/src/frontend/features/settings/ui/archived_conversations_settings_section.dart';
+import 'package:licoup/src/contracts/client_update_models.dart';
+import 'package:licoup/src/frontend/features/settings/ui/client_update_settings_card.dart';
+import 'package:licoup/src/frontend/features/settings/ui/diagnostics_settings_section.dart';
+import 'package:licoup/src/frontend/features/settings/ui/layout_profile_selector.dart';
+import 'package:licoup/src/frontend/features/settings/ui/settings_panel_widgets.dart';
+import 'package:licoup/src/frontend/shared/settings_section_catalog.dart';
+import 'package:licoup/src/frontend/features/settings/ui/startup_autostart_card.dart';
+import 'package:licoup/src/frontend/features/agents/ui/agent_conversation_pane/resize.dart';
+import 'package:licoup/src/frontend/l10n/lico_strings.dart';
+import 'package:licoup/src/frontend/layout/layout_destination_presentation.dart';
+import 'package:licoup/src/frontend/layout/layout_registry.dart';
+import 'package:licoup/src/frontend/layout/layout_scope.dart';
+import 'package:licoup/src/frontend/shared/platform/client_platform.dart';
+import 'package:licoup/src/frontend/shared/ui/directory_path_field.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_content_spacing.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_motion.dart';
+import 'package:licoup/src/frontend/shared/ui/lico_section_header.dart';
+import 'package:licoup/src/frontend/shared/ui/theme.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+import 'package:licoup/src/presentation/settings/settings_binding.dart';
+import 'package:licoup/src/presentation/settings/settings_inputs.dart';
+import 'package:licoup/src/presentation/settings/settings_intent.dart';
+import 'package:licoup/src/presentation/settings/settings_projection.dart';
+import 'package:licoup/src/presentation/settings/settings_providers.dart';
+
+const _settingsSectionIds = settingsSectionIdOrder;
+
+bool _supportsDesktopDataHome(TargetPlatform platform) =>
+    platform == TargetPlatform.macOS ||
+    platform == TargetPlatform.windows ||
+    platform == TargetPlatform.linux;
+
+/// Settings index rail bounds. The rail defaults to the narrowest usable
+/// width and the user drags the split divider wider, mirroring the
+/// conversation-list sidebar in the agents workspace.
+const double _settingsIndexMinWidth = 120;
+const double _settingsIndexMaxWidth = 360;
+const double _settingsIndexDividerWidth = 8;
+const double _settingsMinContentWidth = 360;
+
+class SettingsPanel extends StatefulWidget {
+  const SettingsPanel({
+    super.key,
+    required this.binding,
+    required this.layoutRegistry,
+    this.clientUpdateAdmission = clientUpdateAdmissionUnavailable,
+  });
+
+  final SettingsBinding binding;
+  final LayoutRegistry layoutRegistry;
+
+  /// Live read of the host maintenance answer the update card gates apply on.
+  /// Hosts that do not supply one keep the fail-closed default.
+  final ClientUpdateAdmission Function() clientUpdateAdmission;
+
+  @override
+  State<SettingsPanel> createState() => _SettingsPanelState();
+}
+
+class _SettingsPanelState extends State<SettingsPanel> {
+  final _scrollController = ScrollController();
+  final _contentKey = GlobalKey();
+  final _sectionKeys = <String, GlobalKey>{};
+  final _selectedSectionId = ValueNotifier<String?>(null);
+  LayoutScopedState? _layoutState;
+  String? _layoutStateIdentity;
+  StreamSubscription<void>? _layoutStateChanges;
+  double? _pendingScrollOffset;
+  double _lastScrollOffset = 0;
+  // Default to the narrowest usable rail; users can drag wider.
+  double _indexWidth = _settingsIndexMinWidth;
+  bool _jumpInFlight = false;
+  int _jumpRevision = 0;
+
+  /// Vertical distance from the viewport top within which a section counts
+  /// as the active one for the scroll-spy.
+  static const double _spyThreshold = 80;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_handleScroll);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final scope = LayoutScope.maybeOf(context);
+    if (scope == null) {
+      _unwatchLayoutState();
+      _layoutState = null;
+      _layoutStateIdentity = null;
+      _pendingScrollOffset = null;
+      return;
+    }
+    final identity =
+        '${scope.profileId.value}/${scope.environment.surface.name}';
+    if (_layoutStateIdentity == identity) {
+      return;
+    }
+    _unwatchLayoutState();
+    _layoutStateIdentity = identity;
+    _layoutState = scope.state;
+    _layoutStateChanges = scope.state.changes.listen((_) {
+      _syncSelectionFromStore();
+    });
+
+    final scroll = scope.state.readIfDeclared(
+      LayoutStateChannels.settingsScroll,
+    );
+    final section = scope.state.readIfDeclared(
+      LayoutStateChannels.settingsSection,
+    );
+    _selectedSectionId.value =
+        section is LayoutTabState && section.index < _settingsSectionIds.length
+        ? _settingsSectionIds[section.index]
+        : null;
+    final index = scope.state.readIfDeclared(LayoutStateChannels.settingsIndex);
+    _indexWidth = index is LayoutPaneExtentState
+        ? index.extent.clamp(_settingsIndexMinWidth, _settingsIndexMaxWidth)
+        : _settingsIndexMinWidth;
+    _pendingScrollOffset = scroll is LayoutScrollState ? scroll.offset : 0;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restoreScrollOffset());
+  }
+
+  void _restoreScrollOffset() {
+    final offset = _pendingScrollOffset;
+    if (!mounted || offset == null || !_scrollController.hasClients) {
+      return;
+    }
+    _pendingScrollOffset = null;
+    _scrollController.jumpTo(
+      offset.clamp(0, _scrollController.position.maxScrollExtent).toDouble(),
+    );
+  }
+
+  void _handleScroll() {
+    // Scroll frames fire per pixel — only the spy and a plain field write run
+    // here. Persisting the offset writes shared layout state, which
+    // synchronously notifies every sidebar listener; doing that per frame
+    // turned scrolling into a rebuild storm. The offset persists once when
+    // the scroll ends.
+    _lastScrollOffset = _scrollController.offset;
+    _updateSpySelection();
+  }
+
+  void _persistScrollOffset() {
+    // By the time dispose() runs, the framework has already unmounted the
+    // Scrollable below this panel (children unmount before their ancestors),
+    // so the controller reports no clients. Fall back to the last offset the
+    // scroll listener tracked; otherwise the dispose path would silently drop
+    // a scroll position that never saw a ScrollEndNotification.
+    final offset = _scrollController.hasClients
+        ? _scrollController.offset
+        : _lastScrollOffset;
+    _layoutState?.writeIfDeclared(
+      LayoutStateChannels.settingsScroll,
+      LayoutScrollState(offset.clamp(0, double.infinity).toDouble()),
+    );
+  }
+
+  /// Each section's start offset in scroll coordinates, in section order.
+  List<(String, double)> _sectionOffsets() {
+    final viewportBox = _contentKey.currentContext?.findRenderObject();
+    if (viewportBox is! RenderBox ||
+        !viewportBox.hasSize ||
+        !_scrollController.hasClients) {
+      return const [];
+    }
+    final viewportDy = viewportBox.localToGlobal(Offset.zero).dy;
+    final offsets = <(String, double)>[];
+    for (final id in _settingsSectionIds) {
+      final sectionContext = _sectionKeys[id]?.currentContext;
+      if (sectionContext == null) {
+        continue;
+      }
+      final box = sectionContext.findRenderObject();
+      if (box is! RenderBox || !box.hasSize) {
+        continue;
+      }
+      final dy = box.localToGlobal(Offset.zero).dy;
+      offsets.add((id, dy - viewportDy + _scrollController.offset));
+    }
+    return offsets;
+  }
+
+  /// Scroll-spy: the sidebar selection follows the section closest to the
+  /// viewport's reading zone while the user scrolls.
+  void _updateSpySelection() {
+    // While a sidebar jump is animating, section geometry lags the scroll
+    // offset by a frame. The tapped entry keeps ownership of the selection;
+    // manual scrolling resumes the spy after the jump.
+    if (_jumpInFlight) {
+      return;
+    }
+    final offsets = _sectionOffsets();
+    if (offsets.isEmpty || !mounted) {
+      return;
+    }
+    final offset = _scrollController.offset;
+    var active = offsets.first.$1;
+    for (final (id, top) in offsets) {
+      if (top <= offset + _spyThreshold) {
+        active = id;
+      }
+    }
+    if (active == _selectedSectionId.value) {
+      return;
+    }
+    _selectedSectionId.value = active;
+    final index = _settingsSectionIds.indexOf(active);
+    if (index >= 0) {
+      _layoutState?.writeIfDeclared(
+        LayoutStateChannels.settingsSection,
+        LayoutTabState(index),
+      );
+    }
+  }
+
+  bool _handleScrollEnd() {
+    _persistScrollOffset();
+    final jumpRevision = _jumpRevision;
+    final wasJumping = _jumpInFlight;
+    // Scroll notifications fire before the layout pass that repositions the
+    // sections, so every mid-scroll spy measurement reads one-frame-stale
+    // geometry. A single fast fling leaves no later frame to catch up —
+    // reconcile once against the settled geometry so the sidebar selection
+    // always lands on the section the user actually stopped at.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !wasJumping && jumpRevision == _jumpRevision) {
+        _updateSpySelection();
+      }
+    });
+    return false;
+  }
+
+  GlobalKey _keyFor(String id) {
+    return _sectionKeys.putIfAbsent(id, GlobalKey.new);
+  }
+
+  void _scrollTo(String id) {
+    _selectedSectionId.value = id;
+    final index = _settingsSectionIds.indexOf(id);
+    if (index >= 0) {
+      _layoutState?.writeIfDeclared(
+        LayoutStateChannels.settingsSection,
+        LayoutTabState(index),
+      );
+    }
+    unawaited(_jumpToSection(id));
+  }
+
+  /// Jumps to a section even when the lazy list builder has disposed it.
+  ///
+  /// Travel by sub-viewport steps until the target is mounted, then settle
+  /// exactly onto it. Jumping straight to an edge can skip an intermediate
+  /// section entirely and leave the navigation selection at the wrong end.
+  Future<void> _jumpToSection(String id) async {
+    final revision = ++_jumpRevision;
+    _jumpInFlight = true;
+    try {
+      await _travelToSection(id, revision);
+    } finally {
+      if (revision == _jumpRevision) {
+        // Keep the clicked section selected. At the bottom several sections
+        // share one viewport; a scroll-spy reconciliation would overwrite the
+        // user's target and swallow the next click on that same stored index.
+        // A later manual scroll resumes the spy through _handleScroll.
+        _jumpInFlight = false;
+      }
+    }
+  }
+
+  Future<void> _travelToSection(String id, int revision) async {
+    final targetIndex = _settingsSectionIds.indexOf(id);
+    if (targetIndex < 0) return;
+    var alignmentAttempts = 0;
+    while (mounted &&
+        revision == _jumpRevision &&
+        _scrollController.hasClients) {
+      final context = _keyFor(id).currentContext;
+      if (context != null && context.mounted) {
+        await Scrollable.ensureVisible(
+          context,
+          duration: context.motion(LicoMotion.short),
+          curve: Curves.easeOutQuart,
+          alignment: 0.02,
+        );
+        // Sections above the target can still be installing their
+        // asynchronous regions; their growth shifts the target while the
+        // alignment scroll runs. Re-verify against the settled geometry and
+        // align again instead of stopping on a stale measurement.
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted || revision != _jumpRevision) return;
+        final settled = _keyFor(id).currentContext;
+        if (settled != null &&
+            settled.mounted &&
+            _sectionStartsInsideViewport(settled)) {
+          return;
+        }
+        alignmentAttempts += 1;
+        if (alignmentAttempts >= 4) return;
+        continue;
+      }
+      final known = _sectionOffsets();
+      if (known.isEmpty) return;
+      final firstKnownIndex = _settingsSectionIds.indexOf(known.first.$1);
+      final lastKnownIndex = _settingsSectionIds.indexOf(known.last.$1);
+      final direction = targetIndex < firstKnownIndex
+          ? -1.0
+          : targetIndex > lastKnownIndex
+          ? 1.0
+          : 0.0;
+      if (direction == 0) return;
+      final position = _scrollController.position;
+      final step = position.viewportDimension * 0.72;
+      if (step <= 0) return;
+      final destination = (position.pixels + direction * step)
+          .clamp(position.minScrollExtent, position.maxScrollExtent)
+          .toDouble();
+      if ((destination - position.pixels).abs() <= 0.5) return;
+      _scrollController.jumpTo(destination);
+      await WidgetsBinding.instance.endOfFrame;
+    }
+  }
+
+  /// Whether the section's top edge sits inside the content viewport.
+  bool _sectionStartsInsideViewport(BuildContext context) {
+    final viewportBox = _contentKey.currentContext?.findRenderObject();
+    final box = context.findRenderObject();
+    if (viewportBox is! RenderBox ||
+        !viewportBox.hasSize ||
+        box is! RenderBox ||
+        !box.hasSize) {
+      return true;
+    }
+    final viewportTop = viewportBox.localToGlobal(Offset.zero).dy;
+    final top = box.localToGlobal(Offset.zero).dy;
+    return top >= viewportTop - 1 &&
+        top < viewportTop + viewportBox.size.height - 1;
+  }
+
+  void _unwatchLayoutState() {
+    unawaited(_layoutStateChanges?.cancel());
+    _layoutStateChanges = null;
+  }
+
+  /// Picks up section selections made outside this panel (the shell
+  /// navigation's Settings sub-items) through the shared section tab channel.
+  void _syncSelectionFromStore() {
+    final state = _layoutState;
+    if (state == null || !mounted) {
+      return;
+    }
+    final section = state.readIfDeclared(LayoutStateChannels.settingsSection);
+    if (section is! LayoutTabState ||
+        section.index >= _settingsSectionIds.length) {
+      return;
+    }
+    final id = _settingsSectionIds[section.index];
+    if (id == _selectedSectionId.value) {
+      return;
+    }
+    // A synchronous layout notification must finish before scrolling can
+    // publish its resulting offset. Coalesce rapid selections onto the latest
+    // visible target; older scheduled jumps must not undo a later click.
+    _selectedSectionId.value = id;
+    _jumpInFlight = true;
+    final revision = ++_jumpRevision;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && revision == _jumpRevision) {
+        unawaited(_jumpToSection(id));
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _persistScrollOffset();
+    _unwatchLayoutState();
+    _selectedSectionId.dispose();
+    _scrollController
+      ..removeListener(_handleScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mobileClient = isMobileClientPlatform(context);
+
+    if (mobileClient) {
+      return _MobileSettingsBody(
+        binding: widget.binding,
+        layoutRegistry: widget.layoutRegistry,
+        scrollController: _scrollController,
+      );
+    }
+
+    final sections = _buildSections(context);
+    final presentation = layoutSettingsPresentationOf(context);
+
+    // The profile's shell navigation hosts the section index (sub-items under
+    // Settings), so the content runs full width; the section tab channel
+    // keeps both sides on the same selection.
+    if (presentation.indexHostedByNavigation) {
+      return _buildContentScroll(sections, presentation);
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxIndexWidth =
+            (constraints.maxWidth -
+                    _settingsIndexDividerWidth -
+                    _settingsMinContentWidth)
+                .clamp(_settingsIndexMinWidth, _settingsIndexMaxWidth)
+                .toDouble();
+        final indexWidth = _indexWidth
+            .clamp(_settingsIndexMinWidth, maxIndexWidth)
+            .toDouble();
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ValueListenableBuilder<String?>(
+              valueListenable: _selectedSectionId,
+              builder: (context, selectedId, _) => _SettingsIndexSidebar(
+                width: indexWidth,
+                sections: sections,
+                selectedId: selectedId ?? sections.first.id,
+                onSelect: _scrollTo,
+                presentation: presentation,
+              ),
+            ),
+            Expanded(
+              child: PaneEdgeDragHandle(
+                dragHandleKey: const Key('settings-index-split-divider'),
+                width: _settingsIndexDividerWidth,
+                onDragDelta: (delta) {
+                  setState(() {
+                    _indexWidth = (indexWidth + delta)
+                        .clamp(_settingsIndexMinWidth, maxIndexWidth)
+                        .toDouble();
+                  });
+                  _layoutState?.writeIfDeclared(
+                    LayoutStateChannels.settingsIndex,
+                    LayoutPaneExtentState(_indexWidth),
+                  );
+                },
+                child: _buildContentScroll(sections, presentation),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildContentScroll(
+    List<_SettingsSection> sections,
+    LayoutSettingsPresentation presentation,
+  ) {
+    return Scrollbar(
+      key: _contentKey,
+      controller: _scrollController,
+      child: NotificationListener<ScrollEndNotification>(
+        onNotification: (notification) => _handleScrollEnd(),
+        child: ListView.builder(
+          key: const Key('settings-content-scroll'),
+          controller: _scrollController,
+          padding: presentation.contentPadding,
+          itemCount: sections.length * 2 - 1,
+          itemBuilder: (context, index) {
+            if (index.isOdd) {
+              // Equal space above and below the hairline; section headers
+              // and rows use the same vertical token so the gap stays even.
+              // Section cards separate with a clear gap; the clear pane
+              // reads between them, so there is no hairline divider.
+              return const SizedBox(height: 12);
+            }
+            final section = sections[index ~/ 2];
+            return presentation.frameSection(
+              context,
+              key: _keyFor(section.id),
+              child: section.builder(context),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  List<_SettingsSection> _buildSections(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    Widget childFor(String id) => switch (id) {
+      'general' => _GeneralSettings(binding: widget.binding),
+      'appearance' => _AppearanceSettings(
+        binding: widget.binding,
+        layoutRegistry: widget.layoutRegistry,
+        surface: LayoutRuntimeSurface.desktop,
+      ),
+      'updates' => ClientUpdateSettingsCard(
+        binding: widget.binding,
+        admission: widget.clientUpdateAdmission,
+      ),
+      'storage' => _StorageSettings(binding: widget.binding),
+      'startup' => StartupAutostartCard(binding: widget.binding),
+      'archived-conversations' => ArchivedConversationsSettingsSection(
+        binding: widget.binding,
+      ),
+      _ => DiagnosticsSettingsSection(binding: widget.binding),
+    };
+    return [
+      for (final descriptor in settingsSectionDescriptors(strings))
+        _SettingsSection(
+          id: descriptor.id,
+          icon: descriptor.icon,
+          label: descriptor.label,
+          builder: (_) => childFor(descriptor.id),
+        ),
+    ];
+  }
+}
+
+class _SettingsSection {
+  const _SettingsSection({
+    required this.id,
+    required this.icon,
+    required this.label,
+    required this.builder,
+  });
+
+  final String id;
+  final IconData icon;
+  final String label;
+  final WidgetBuilder builder;
+}
+
+class _SettingsIndexSidebar extends StatefulWidget {
+  const _SettingsIndexSidebar({
+    required this.width,
+    required this.sections,
+    required this.selectedId,
+    required this.onSelect,
+    required this.presentation,
+  });
+
+  final double width;
+  final List<_SettingsSection> sections;
+  final String selectedId;
+  final ValueChanged<String> onSelect;
+  final LayoutSettingsPresentation presentation;
+
+  @override
+  State<_SettingsIndexSidebar> createState() => _SettingsIndexSidebarState();
+}
+
+class _SettingsIndexSidebarState extends State<_SettingsIndexSidebar> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: SizedBox(
+        width: widget.width,
+        child: widget.presentation.frameIndex(
+          context,
+          hovered: _hovered,
+          child: SafeArea(
+            child: Padding(
+              padding: widget.presentation.indexPadding,
+              child: ListView(
+                key: const Key('settings-index-scroll'),
+                padding: EdgeInsets.zero,
+                children: [
+                  for (final section in widget.sections)
+                    _IndexItem(
+                      icon: section.icon,
+                      label: section.label,
+                      selected: widget.selectedId == section.id,
+                      onTap: () => widget.onSelect(section.id),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _IndexItem extends StatefulWidget {
+  const _IndexItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  State<_IndexItem> createState() => _IndexItemState();
+}
+
+class _IndexItemState extends State<_IndexItem> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.licoColors;
+    final bgColor = _hovered && !widget.selected
+        ? LicoSelectionLight.hoverFill(context)
+        : Colors.transparent;
+    final fgColor = widget.selected ? colors.selectionInk : colors.text;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(
+            horizontal: LicoContentSpacing.compact,
+            vertical: LicoContentSpacing.inline / 2,
+          ),
+          child: LicoSelectionLight(
+            selected: widget.selected,
+            radius: 7,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: LicoContentSpacing.compact,
+                vertical: LicoContentSpacing.compact,
+              ),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Row(
+                children: [
+                  Icon(widget.icon, size: 17, color: fgColor),
+                  const SizedBox(width: LicoContentSpacing.compact),
+                  Expanded(
+                    child: Text(
+                      widget.label,
+                      style:
+                          (widget.selected
+                                  ? LicoListTypeRamp.of(
+                                      context,
+                                    ).denseIndexLabelSelected
+                                  : LicoListTypeRamp.of(
+                                      context,
+                                    ).denseIndexLabel)
+                              .copyWith(
+                                color: fgColor == colors.text ? null : fgColor,
+                              ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GeneralSettings extends StatelessWidget {
+  const _GeneralSettings({required this.binding});
+
+  final SettingsBinding binding;
+
+  @override
+  Widget build(BuildContext context) =>
+      AsyncRegion<SettingsGeneralInputs, IntentSink<SettingsIntent>>(
+        source: settingsGeneralInputsProvider,
+        actions: binding.intents,
+        loading: (_, _) => const SizedBox.shrink(),
+        data: (context, inputs, intents) {
+          final locale = _selectedChoiceId(inputs.localeChoices);
+          final strings = LicoStrings.of(context);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LicoSectionHeader(
+                key: const Key('settings-section-header-general'),
+                title: strings.general,
+                leading: Icon(
+                  Icons.tune_outlined,
+                  size: 18,
+                  color: context.licoColors.textSecondary,
+                ),
+                padding: layoutSettingsPresentationOf(
+                  context,
+                ).sectionHeaderPadding,
+              ),
+              SettingsDropdownRow<String>(
+                dropdownKey: const Key('settings-locale-dropdown'),
+                icon: Icons.language_outlined,
+                title: strings.language,
+                value: locale,
+                items: [
+                  for (final preference in LocalePreference.values)
+                    SettingsDropdownItem(
+                      value: preference,
+                      label: strings.localePreferenceLabel(preference),
+                      key: Key('settings-locale-$preference'),
+                    ),
+                ],
+                onSelected: (value) => intents.send(SetLocalePreference(value)),
+              ),
+            ],
+          );
+        },
+      );
+}
+
+class _AppearanceSettings extends StatelessWidget {
+  const _AppearanceSettings({
+    required this.binding,
+    required this.layoutRegistry,
+    required this.surface,
+  });
+
+  final SettingsBinding binding;
+  final LayoutRegistry layoutRegistry;
+  final LayoutRuntimeSurface surface;
+
+  @override
+  Widget build(BuildContext context) =>
+      AsyncRegion<SettingsAppearanceInputs, IntentSink<SettingsIntent>>(
+        source: settingsAppearanceInputsProvider,
+        actions: binding.intents,
+        loading: (_, _) => const SizedBox.shrink(),
+        data: _buildAppearance,
+      );
+
+  Widget _buildAppearance(
+    BuildContext context,
+    SettingsAppearanceInputs projection,
+    IntentSink<SettingsIntent> intents,
+  ) {
+    final colors = context.licoColors;
+    final strings = LicoStrings.of(context);
+    final presentation = layoutSettingsPresentationOf(context);
+    final configs = projection.appearancePresets;
+    final currentId = projection.appearancePresetId;
+    final isDark = _isResolvedAppearanceDark(
+      currentId,
+      configs,
+      MediaQuery.platformBrightnessOf(context),
+    );
+    final selectablePresets = _selectableAppearancePresetsForBrightness(
+      configs,
+      isDark,
+    );
+    final currentPreset = _appearancePreset(currentId, configs);
+    final resolvedPresetId =
+        currentPreset?.mode == SettingsAppearanceMode.system
+        ? (isDark ? currentPreset!.darkPresetId : currentPreset!.lightPresetId)
+        : currentId;
+    final selectedPresetId =
+        selectablePresets.any((config) => config.id == resolvedPresetId)
+        ? resolvedPresetId
+        : null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LicoSectionHeader(
+          key: const Key('settings-section-header-appearance'),
+          title: strings.appearance,
+          leading: Icon(
+            Icons.palette_outlined,
+            size: 18,
+            color: colors.textSecondary,
+          ),
+          padding: presentation.sectionHeaderPadding,
+        ),
+        SettingsDayNightToggleRow(
+          selection: _appearanceBrightnessSelectionFor(currentId, configs),
+          disabledSegments: configs.isEmpty
+              ? AppearanceBrightnessSelection.values.toSet()
+              : const {},
+          onChanged: (selection) {
+            intents.send(
+              SetAppearancePreference(
+                _appearancePresetIdForBrightnessSelection(
+                  selection,
+                  currentId,
+                  configs,
+                ),
+              ),
+            );
+          },
+        ),
+        SettingsDropdownRow<String>(
+          dropdownKey: const Key('settings-appearance-dropdown'),
+          icon: Icons.palette_outlined,
+          title: strings.appearancePreset,
+          value: selectedPresetId,
+          enabled: selectablePresets.isNotEmpty,
+          items: [
+            for (final config in selectablePresets)
+              SettingsDropdownItem(
+                value: config.id,
+                label: config.labelFor(strings.isChinese),
+              ),
+          ],
+          onSelected: (presetId) {
+            intents.send(SetAppearancePreference(presetId));
+          },
+        ),
+        SettingsDropdownRow<String>(
+          dropdownKey: const Key('settings-loading-effect-dropdown'),
+          icon: Icons.motion_photos_on_outlined,
+          title: strings.isChinese ? '加载动画' : 'Loading animation',
+          value: loadingEffectForId(projection.loadingEffectId).id,
+          items: [
+            for (final effect in builtInLoadingEffects)
+              SettingsDropdownItem(
+                value: effect.id,
+                label: strings.isChinese
+                    ? effect.chineseLabel
+                    : effect.englishLabel,
+              ),
+          ],
+          onSelected: (id) => intents.send(SetLoadingEffectPreference(id)),
+        ),
+        _ReduceMotionSetting(
+          binding: binding,
+          manualReduced: projection.reduceMotion,
+        ),
+        LayoutProfileSelector(
+          binding: binding,
+          registry: layoutRegistry,
+          surface: surface,
+        ),
+        if (surface == LayoutRuntimeSurface.desktop)
+          DirectoryPathField(
+            title: strings.appearancePresetDirectory,
+            label: strings.appearancePresetDirectory,
+            path: projection.appearancePresetDirectoryPath,
+            icon: Icons.folder_copy_outlined,
+            readOnly: true,
+            padding: presentation.rowPadding,
+            onOpen: (_) {
+              intents.send(
+                OpenSettingsDirectory(
+                  SettingsDirectory.appearancePresets,
+                  caption: strings.appearancePresetDirectory,
+                ),
+              );
+              return Future<void>.value();
+            },
+          ),
+        if (projection.appearancePresetLoadErrorCount > 0)
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              presentation.rowPadding.resolve(Directionality.of(context)).left,
+              0,
+              presentation.rowPadding.resolve(Directionality.of(context)).right,
+              LicoContentSpacing.item,
+            ),
+            child: Text(
+              strings.invalidPresetConfigs(
+                projection.appearancePresetLoadErrorCount,
+              ),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.error,
+              ),
+            ),
+          ),
+        _MountedPlanContributions(
+          contributions: projection.planContributions,
+          rowPadding: presentation.rowPadding,
+        ),
+      ],
+    );
+  }
+}
+
+/// What the mounted native plan contributes to this client's interface.
+///
+/// The values come from the registry that mounted one plan revision, so a
+/// contribution the native host refused never reaches here. Each one is rendered
+/// by the compiled primitive it names ([HostPrimitiveView]); a primitive this
+/// build did not compile cannot be in the list, because the registry refuses it
+/// before mounting.
+class _MountedPlanContributions extends StatelessWidget {
+  const _MountedPlanContributions({
+    required this.contributions,
+    required this.rowPadding,
+  });
+
+  final List<MountedContribution> contributions;
+  final EdgeInsetsGeometry rowPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    if (contributions.isEmpty) return const SizedBox.shrink();
+    return Column(
+      key: const Key('settings-plan-contributions'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final contribution in contributions)
+          Padding(
+            key: Key('settings-plan-contribution-${contribution.id}'),
+            padding: EdgeInsets.fromLTRB(
+              rowPadding.resolve(Directionality.of(context)).left,
+              0,
+              rowPadding.resolve(Directionality.of(context)).right,
+              LicoContentSpacing.item,
+            ),
+            child: HostPrimitiveView(contribution: contribution),
+          ),
+      ],
+    );
+  }
+}
+
+class _ReduceMotionSetting extends StatelessWidget {
+  const _ReduceMotionSetting({
+    required this.binding,
+    required this.manualReduced,
+  });
+
+  final SettingsBinding binding;
+  final ReduceMotionPreference manualReduced;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final colors = context.licoColors;
+    final presentation = layoutSettingsPresentationOf(context);
+    final titleStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
+      color: colors.text,
+      fontWeight: FontWeight.w600,
+    );
+    final segments = [
+      (value: ReduceMotionPreference.system, label: strings.followSystem),
+      (value: ReduceMotionPreference.on, label: strings.reduceMotionOn),
+      (value: ReduceMotionPreference.off, label: strings.reduceMotionOff),
+    ];
+    final toggle = SettingsSegmentedControl<ReduceMotionPreference>(
+      key: const Key('settings-reduce-motion'),
+      segments: segments,
+      selected: manualReduced,
+      onChanged: (value) =>
+          binding.intents.send(SetReduceMotionPreference(value)),
+    );
+    return Padding(
+      padding: presentation.rowPadding,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 560;
+          final titleRow = Row(
+            children: [
+              Icon(
+                Icons.motion_photos_off_outlined,
+                size: 18,
+                color: colors.textSecondary,
+              ),
+              const SizedBox(width: LicoContentSpacing.compact),
+              Expanded(
+                child: Text(strings.reduceMotionTitle, style: titleStyle),
+              ),
+            ],
+          );
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                titleRow,
+                const SizedBox(height: LicoContentSpacing.compact),
+                toggle,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: titleRow),
+              const SizedBox(width: LicoContentSpacing.item),
+              toggle,
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _StorageSettings extends StatelessWidget {
+  const _StorageSettings({required this.binding});
+
+  final SettingsBinding binding;
+
+  @override
+  Widget build(BuildContext context) =>
+      AsyncRegion<SettingsStorageInputs, IntentSink<SettingsIntent>>(
+        source: settingsStorageInputsProvider,
+        actions: binding.intents,
+        loading: (_, _) => const SizedBox.shrink(),
+        data: (context, inputs, _) =>
+            _StorageSettingsBody(binding: binding, inputs: inputs),
+      );
+}
+
+class _StorageSettingsBody extends StatefulWidget {
+  const _StorageSettingsBody({required this.binding, required this.inputs});
+
+  final SettingsBinding binding;
+  final SettingsStorageInputs inputs;
+
+  @override
+  State<_StorageSettingsBody> createState() => _StorageSettingsState();
+}
+
+class _StorageSettingsState extends State<_StorageSettingsBody> {
+  late final TextEditingController _snapshotRootController;
+  late String _lastSnapshotRootPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastSnapshotRootPath = widget.inputs.snapshotRootPath;
+    _snapshotRootController = TextEditingController(
+      text: _lastSnapshotRootPath,
+    );
+  }
+
+  @override
+  void didUpdateWidget(_StorageSettingsBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = widget.inputs.snapshotRootPath;
+    if (next != _lastSnapshotRootPath) {
+      _lastSnapshotRootPath = next;
+      _snapshotRootController.text = next;
+    }
+  }
+
+  bool _canRelocateDataHome(BuildContext context) =>
+      (widget.inputs.portableDataSource == 'saved' ||
+          widget.inputs.portableDataSource == 'defaultHome') &&
+      _supportsDesktopDataHome(Theme.of(context).platform);
+
+  bool _canCleanPreviousDataHome(BuildContext context) =>
+      widget.inputs.previousDataHomeAvailable &&
+      (widget.inputs.portableDataSource == 'saved' ||
+          widget.inputs.portableDataSource == 'defaultHome') &&
+      _supportsDesktopDataHome(Theme.of(context).platform);
+
+  Future<void> _chooseDataHomeDestination(BuildContext context) async {
+    final strings = LicoStrings.of(context);
+    final destination = await getDirectoryPath(
+      confirmButtonText: strings.chooseDataHomeDestination,
+    );
+    if (destination == null || !mounted || !context.mounted) return;
+    final folder = p.basename(p.normalize(destination));
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(strings.confirmDataHomeMove),
+        content: Text(strings.dataHomeMoveConfirmation(folder)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(strings.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(strings.move),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    widget.binding.intents.send(RelocateDataHome(destination));
+  }
+
+  Future<void> _confirmPreviousDataHomeCleanup(BuildContext context) async {
+    final strings = LicoStrings.of(context);
+    final path = widget.inputs.previousDataHomePath;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(strings.confirmPreviousDataHomeCleanup),
+        content: Text(strings.dataHomeCleanupConfirmation(path)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(strings.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(strings.cleanPreviousDataHome),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    widget.binding.intents.send(CleanupPreviousDataHome(path));
+  }
+
+  @override
+  void dispose() {
+    _snapshotRootController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = LicoStrings.of(context);
+    final presentation = layoutSettingsPresentationOf(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LicoSectionHeader(
+          key: const Key('settings-section-header-storage'),
+          title: strings.storageAndData,
+          leading: Icon(
+            Icons.inventory_2_outlined,
+            size: 18,
+            color: context.licoColors.textSecondary,
+          ),
+          padding: presentation.sectionHeaderPadding,
+        ),
+        DirectoryPathField(
+          title: strings.portableData,
+          label: strings.portableData,
+          path: widget.inputs.portableDataPath,
+          subtitle: strings.dataHomeSource(widget.inputs.portableDataSource),
+          icon: Icons.folder_outlined,
+          readOnly: true,
+          padding: presentation.rowPadding,
+          onOpen: (_) {
+            widget.binding.intents.send(
+              OpenSettingsDirectory(
+                SettingsDirectory.portableData,
+                caption: strings.portableData,
+              ),
+            );
+            return Future<void>.value();
+          },
+        ),
+        Padding(
+          padding: presentation.rowPadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(strings.moveDataHomeDescription),
+              const SizedBox(height: 10),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: FilledButton.icon(
+                  key: const Key('settings-data-home-relocate'),
+                  onPressed: _canRelocateDataHome(context)
+                      ? () => unawaited(_chooseDataHomeDestination(context))
+                      : null,
+                  icon: const Icon(Icons.drive_file_move_outline),
+                  label: Text(strings.moveDataHome),
+                ),
+              ),
+              if (!_canRelocateDataHome(context)) ...[
+                const SizedBox(height: 6),
+                Text(
+                  strings.dataHomeMoveRequiresSavedSelection,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+              if (widget.inputs.previousDataHomeAvailable) ...[
+                const SizedBox(height: 12),
+                Text(
+                  strings.dataHomePreviousRootRetained(
+                    widget.inputs.previousDataHomePath,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  key: const Key('settings-data-home-cleanup-previous'),
+                  onPressed: _canCleanPreviousDataHome(context)
+                      ? () =>
+                            unawaited(_confirmPreviousDataHomeCleanup(context))
+                      : null,
+                  icon: const Icon(Icons.delete_outline),
+                  label: Text(strings.cleanPreviousDataHome),
+                ),
+              ],
+            ],
+          ),
+        ),
+        DirectoryPathField(
+          title: strings.conversationArchiveRoot,
+          label: strings.snapshotRootPath,
+          controller: _snapshotRootController,
+          icon: Icons.inventory_2_outlined,
+          padding: presentation.rowPadding,
+          enabled: !widget.inputs.savingSnapshotRoot,
+          busy: widget.inputs.savingSnapshotRoot,
+          onOpen: (_) {
+            widget.binding.intents.send(
+              OpenSettingsDirectory(
+                SettingsDirectory.conversationSnapshots,
+                path: _snapshotRootController.text,
+                caption: strings.conversationArchiveRoot,
+              ),
+            );
+            return Future<void>.value();
+          },
+          actions: [
+            SizedBox(
+              height: settingsControlHeight,
+              child: FilledButton.icon(
+                onPressed: widget.inputs.savingSnapshotRoot
+                    ? null
+                    : () {
+                        widget.binding.intents.send(
+                          SetConversationSnapshotLocation(
+                            _snapshotRootController.text,
+                          ),
+                        );
+                      },
+                icon: widget.inputs.savingSnapshotRoot
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: LicoLoadingIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.save_outlined, size: 15),
+                label: Text(strings.save),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _MobileSettingsBody extends StatelessWidget {
+  const _MobileSettingsBody({
+    required this.binding,
+    required this.layoutRegistry,
+    required this.scrollController,
+  });
+
+  final SettingsBinding binding;
+  final LayoutRegistry layoutRegistry;
+  final ScrollController scrollController;
+
+  @override
+  Widget build(BuildContext context) => ListView.builder(
+    controller: scrollController,
+    padding: const EdgeInsets.symmetric(vertical: LicoContentSpacing.item),
+    itemCount: 2,
+    itemBuilder: (context, index) => index == 0
+        ? _GeneralSettings(binding: binding)
+        : _AppearanceSettings(
+            binding: binding,
+            layoutRegistry: layoutRegistry,
+            surface: LayoutRuntimeSurface.mobile,
+          ),
+  );
+}
+
+String? _selectedChoiceId(List<PresentationChoice> choices) {
+  for (final choice in choices) {
+    if (choice.selected) return choice.id;
+  }
+  return null;
+}
+
+SettingsAppearancePresetProjection? _appearancePreset(
+  String id,
+  List<SettingsAppearancePresetProjection> presets,
+) {
+  for (final preset in presets) {
+    if (preset.id == id) return preset;
+  }
+  return presets.firstOrNull;
+}
+
+bool _isResolvedAppearanceDark(
+  String selectedId,
+  List<SettingsAppearancePresetProjection> presets,
+  Brightness platformBrightness,
+) {
+  final selected = _appearancePreset(selectedId, presets);
+  return switch (selected?.mode) {
+    SettingsAppearanceMode.dark => true,
+    SettingsAppearanceMode.light => false,
+    SettingsAppearanceMode.system ||
+    null => platformBrightness == Brightness.dark,
+  };
+}
+
+AppearanceBrightnessSelection _appearanceBrightnessSelectionFor(
+  String selectedId,
+  List<SettingsAppearancePresetProjection> presets,
+) => switch (_appearancePreset(selectedId, presets)?.mode) {
+  SettingsAppearanceMode.system || null => AppearanceBrightnessSelection.system,
+  SettingsAppearanceMode.light => AppearanceBrightnessSelection.light,
+  SettingsAppearanceMode.dark => AppearanceBrightnessSelection.dark,
+};
+
+String _appearancePresetIdForBrightnessSelection(
+  AppearanceBrightnessSelection selection,
+  String currentId,
+  List<SettingsAppearancePresetProjection> presets,
+) => switch (selection) {
+  AppearanceBrightnessSelection.system => AppearancePresetIds.defaultSystem,
+  AppearanceBrightnessSelection.light =>
+    _appearancePreset(currentId, presets)?.mode == SettingsAppearanceMode.light
+        ? currentId
+        : AppearancePresetIds.taroWaffle,
+  AppearanceBrightnessSelection.dark =>
+    _appearancePreset(currentId, presets)?.mode == SettingsAppearanceMode.dark
+        ? currentId
+        : AppearancePresetIds.starlitGold,
+};
+
+List<SettingsAppearancePresetProjection>
+_selectableAppearancePresetsForBrightness(
+  List<SettingsAppearancePresetProjection> presets,
+  bool dark,
+) => presets
+    .where(
+      (preset) =>
+          !AppearancePresetIds.resolutionOnly.contains(preset.id) &&
+          preset.mode != SettingsAppearanceMode.system &&
+          (dark
+              ? preset.mode == SettingsAppearanceMode.dark
+              : preset.mode == SettingsAppearanceMode.light),
+    )
+    .toList(growable: false);

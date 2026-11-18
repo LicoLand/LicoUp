@@ -1,0 +1,354 @@
+import 'dart:async';
+
+import 'package:licoup/src/application/controller/client_agent_usage_facade.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
+import 'package:licoup/src/application/controller/client_conversation_facade.dart';
+import 'package:licoup/src/application/controller/client_skill_hub_facade.dart';
+import 'package:licoup/src/application/controller/client_target_facade.dart';
+import 'package:licoup/src/application/features/agents/workspace/agent_workspace_coordinator.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_refresh_controller.dart';
+import 'package:licoup/src/application/features/agents/conversation/conversation_session_controller.dart';
+import 'package:licoup/src/application/features/agents/policy/conversation_refresh_policy.dart';
+import 'package:licoup/src/application/features/agent_hub/agent_hub_catalog_controller.dart';
+import 'package:licoup/src/application/features/devices/devices_controller.dart';
+import 'package:licoup/src/application/features/models/controller/llm_gateway_lifecycle_controller.dart';
+import 'package:licoup/src/application/features/navigation/controller/client_interface_entry_hook_controller.dart';
+import 'package:licoup/src/application/features/navigation/controller/client_navigation_controller.dart';
+import 'package:licoup/src/application/features/navigation/controller/client_current_view_tracker.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
+import 'package:licoup/src/contracts/presentation/semantic_destination.dart';
+import 'package:licoup/src/contracts/presentation/client_current_view.dart';
+import 'package:licoup/src/contracts/target_candidate.dart';
+
+mixin ClientNavigationFacade
+    on
+        AgentWorkspaceCoordinator,
+        AgentConversationSessionController,
+        ConversationRefreshController,
+        ClientConversationFacade,
+        ClientAgentUsageFacade,
+        ClientSkillHubFacade,
+        ClientTargetFacade {
+  final Object _navigationUsagePollingOwner = Object();
+  bool _currentConversationViewRestoreApplied = false;
+  bool _applyingCurrentConversationViewRestore = false;
+
+  ClientNavigationController get navigationController;
+  ClientInterfaceEntryHookController get interfaceEntryHookController;
+  LlmGatewayLifecycleController get llmGatewayLifecycleController;
+  AdapterPluginController get adapterPluginController;
+  AgentHubCatalogController get agentHubCatalogController;
+  DevicesController get devicesController;
+  ClientCurrentViewTracker get currentViewTracker;
+  ClientCurrentViewStore get currentViewStore;
+  bool get mobileClientRuntimePlatform;
+
+  ClientSection get currentSection => navigationController.currentSection;
+  set currentSection(ClientSection value) {
+    navigationController.replaceCurrentSection(value);
+  }
+
+  void selectSection(ClientSection section, {ApplicationCause? cause}) {
+    navigationController.select(section, cause: cause);
+    if (!mobileClientRuntimePlatform) {
+      interfaceEntryHookController.requestEntry(section);
+    }
+    conversationAttentionContextChanged();
+    if (section == ClientSection.agents) {
+      if (_currentConversationViewRestoreApplied) {
+        _recordCurrentConversationView();
+      } else {
+        unawaited(applyCurrentConversationViewRestore());
+      }
+    } else {
+      final current =
+          currentViewTracker.current ??
+          _currentConversationView(section: ClientSection.agents);
+      currentViewTracker.record(current.withSection(section));
+    }
+    notifyClientStateChanged();
+  }
+
+  Future<void> loadCurrentViewRestore() async {
+    await currentViewTracker.load(
+      store: currentViewStore,
+      portableData: agentWorkspacePortableData,
+    );
+    final restored = currentViewTracker.current;
+    if (restored != null) {
+      currentSection = restored.section;
+    }
+  }
+
+  /// Default per-section interface-entry Hook lanes, resolved at bootstrap.
+  /// The scheduler groups these by destination and owns ordering, RPC
+  /// priority, coalescing, failure isolation, and disposal; each action stays
+  /// a narrow owner of its own operation gate.
+  Map<ClientSection, ClientInterfaceEntryHookTask>
+  resolveInterfaceEntryHookTasks() => {
+    ClientSection.agents: ClientInterfaceEntryHookTask(
+      section: ClientSection.agents,
+      action: () async {
+        // Canonical groups, with Local's first page already warmed on startup,
+        // must become usable before Agent discovery. A shared Future.wait
+        // would make a restored group wait for the slowest Agent scan again.
+        await clientConversationController.initialize();
+        try {
+          await applyCurrentConversationViewRestore();
+        } finally {
+          // A failed group read must still allow independent target discovery.
+          await scanTargets(showProgress: false, surfaceErrors: true);
+        }
+        selectDefaultConversationAgent();
+        await applyCurrentConversationViewRestore();
+        ensureConversationInterfaceModelCatalogEntry(forceEntry: true);
+      },
+    ),
+    ClientSection.models: ClientInterfaceEntryHookTask(
+      section: ClientSection.models,
+      action: llmGatewayLifecycleController.pollNow,
+    ),
+    ClientSection.devices: ClientInterfaceEntryHookTask(
+      section: ClientSection.devices,
+      action: () async {
+        await devicesController.refresh();
+      },
+    ),
+    ClientSection.agentHub: ClientInterfaceEntryHookTask(
+      section: ClientSection.agentHub,
+      action: () async {
+        await agentHubCatalogController.refresh();
+      },
+    ),
+    ClientSection.skillHub: ClientInterfaceEntryHookTask(
+      section: ClientSection.skillHub,
+      action: () async {
+        unawaited(loadSkillUsageCounts());
+        await refreshSkillHub(
+          selectedConversationAgentId,
+          forceRefresh: true,
+          showProgress: false,
+        );
+      },
+    ),
+    ClientSection.pluginManagement: ClientInterfaceEntryHookTask(
+      section: ClientSection.pluginManagement,
+      action: () async {
+        await adapterPluginController.refresh();
+      },
+    ),
+  };
+
+  void clientEnterAgentsSection() {
+    var selectionChanged = false;
+    if (!mobileClientRuntimePlatform && selectedConversationAgentId.isEmpty) {
+      // Section entry retries the persisted selection after target discovery.
+      // A fresh desktop install deliberately remains unselected.
+      selectDefaultConversationAgent();
+      selectionChanged = selectedConversationAgentId.isNotEmpty;
+    }
+    if (selectionChanged) notifyConversationStructureChanged();
+    unawaited(applyCurrentConversationViewRestore());
+    if (scannedTargets.isEmpty) unawaited(scanTargets());
+    ensureConversationInterfaceModelCatalog();
+  }
+
+  void clientEnterMonitoringSection() {
+    if (!mobileClientRuntimePlatform) {
+      agentUsageController.acquirePollingOwner(_navigationUsagePollingOwner);
+      unawaited(agentUsageController.ensureLoadedAndFresh(limit: 20));
+    }
+  }
+
+  void clientExitMonitoringSection() {
+    agentUsageController.releasePollingOwner(_navigationUsagePollingOwner);
+  }
+
+  void updateConversationAttention({
+    ConversationLifecyclePhase? lifecycleState,
+    bool? viewFocused,
+  }) => updateConversationAttentionState(
+    lifecycleState: lifecycleState,
+    viewFocused: viewFocused,
+  );
+
+  void selectDefaultConversationAgent({bool preferDirectAgent = false}) {
+    // Relaunch restores the global current-view snapshot before any default.
+    if (_tryRestoreCurrentAgentView()) {
+      return;
+    }
+    // Only an absent selection is defaulted. An existing selection (the
+    // user's active conversation) is preserved even when the agent is
+    // temporarily missing from this scan's results: a transient probe failure
+    // must not kick the user out of the conversation, and the selection
+    // reconnects once the agent is discovered again.
+    if (selectedConversationAgentId.isNotEmpty) {
+      return;
+    }
+    // Desktop starts on the empty conversation surface (mascot greeting with
+    // a centered composer) when there is no persisted conversation. Mobile
+    // still needs one target selected for its compact navigation flow.
+    if (!mobileClientRuntimePlatform) {
+      return;
+    }
+    final visibleTargets = scannedTargets
+        .where((target) => target.isConversationAgent)
+        .toList(growable: false);
+    if (visibleTargets.isEmpty) {
+      abandonNewConversationDraft(selectedConversationAgentId);
+      selectedConversationAgentId = '';
+      stopConversationRefreshScheduling();
+      return;
+    }
+    if (selectedConversationAgentId.isEmpty ||
+        !visibleTargets.any(
+          (target) => target.target == selectedConversationAgentId,
+        )) {
+      selectedConversationAgentId = visibleTargets.first.target;
+      beginNewConversationDraft(selectedConversationAgentId);
+    }
+  }
+
+  List<TargetCandidate> orderedConversationTargets(
+    Iterable<TargetCandidate> targets,
+  ) {
+    return targetController.orderedConversationTargets(targets);
+  }
+
+  @override
+  bool get agentWorkspaceMobileRuntime => mobileClientRuntimePlatform;
+
+  @override
+  ClientSection get agentWorkspaceCurrentSection =>
+      navigationController.currentSection;
+
+  @override
+  void agentWorkspaceSelectDefaultConversationAgent({
+    bool preferDirectAgent = false,
+  }) => selectDefaultConversationAgent(preferDirectAgent: preferDirectAgent);
+
+  @override
+  void agentWorkspaceRecordCurrentAgentView() {
+    if (_applyingCurrentConversationViewRestore ||
+        currentSection != ClientSection.agents) {
+      return;
+    }
+    _currentConversationViewRestoreApplied = true;
+    final agentId = selectedConversationAgentId.trim();
+    if (agentId.isEmpty) {
+      _recordCurrentConversationView();
+      return;
+    }
+    currentViewTracker.record(
+      ClientCurrentView.agent(
+        section: currentSection,
+        agentId: agentId,
+        sessionId: selectedConversationSessionId.trim(),
+      ),
+    );
+  }
+
+  void recordCurrentGroupConversationView(String conversationId) {
+    if (_applyingCurrentConversationViewRestore ||
+        currentSection != ClientSection.agents) {
+      return;
+    }
+    _currentConversationViewRestoreApplied = true;
+    final normalized = conversationId.trim();
+    if (normalized.isEmpty) {
+      _recordCurrentConversationView();
+      return;
+    }
+    currentViewTracker.record(
+      ClientCurrentView.group(
+        section: currentSection,
+        conversationId: normalized,
+      ),
+    );
+  }
+
+  Future<bool> applyCurrentConversationViewRestore() async {
+    if (_currentConversationViewRestoreApplied || !currentViewTracker.loaded) {
+      return false;
+    }
+    final restored = currentViewTracker.current;
+    if (restored == null ||
+        restored.conversationKind == ClientConversationViewKind.welcome) {
+      _currentConversationViewRestoreApplied = true;
+      return false;
+    }
+    if (restored.conversationKind == ClientConversationViewKind.agent) {
+      return _tryRestoreCurrentAgentView();
+    }
+
+    await clientConversationController.initialize();
+    if (_currentConversationViewRestoreApplied ||
+        currentViewTracker.current != restored) {
+      return false;
+    }
+    final conversationId = restored.groupConversationId;
+    if (!clientConversationController.groupConversations.any(
+      (conversation) => conversation.id == conversationId,
+    )) {
+      _currentConversationViewRestoreApplied = true;
+      return false;
+    }
+    _applyingCurrentConversationViewRestore = true;
+    try {
+      selectedConversationAgentId = '';
+      await clientConversationController.selectConversation(conversationId);
+    } finally {
+      _applyingCurrentConversationViewRestore = false;
+    }
+    _currentConversationViewRestoreApplied = true;
+    notifyConversationStructureChanged();
+    notifyClientStateChanged();
+    return true;
+  }
+
+  bool _tryRestoreCurrentAgentView() {
+    if (_currentConversationViewRestoreApplied || !currentViewTracker.loaded) {
+      return false;
+    }
+    final restored = currentViewTracker.current;
+    if (restored == null ||
+        restored.conversationKind != ClientConversationViewKind.agent) {
+      return false;
+    }
+    _applyingCurrentConversationViewRestore = true;
+    late final bool applied;
+    try {
+      clientConversationController.clearSelection();
+      applied = restoreCurrentAgentView(restored.agentId, restored.sessionId);
+    } finally {
+      _applyingCurrentConversationViewRestore = false;
+    }
+    if (applied) _currentConversationViewRestoreApplied = true;
+    return applied;
+  }
+
+  ClientCurrentView _currentConversationView({required ClientSection section}) {
+    final groupId = clientConversationController.selectedConversationId.trim();
+    if (groupId.isNotEmpty) {
+      return ClientCurrentView.group(section: section, conversationId: groupId);
+    }
+    final agentId = selectedConversationAgentId.trim();
+    if (agentId.isNotEmpty) {
+      return ClientCurrentView.agent(
+        section: section,
+        agentId: agentId,
+        sessionId: selectedConversationSessionId.trim(),
+      );
+    }
+    return ClientCurrentView.welcome(section: section);
+  }
+
+  void _recordCurrentConversationView() {
+    if (_applyingCurrentConversationViewRestore) {
+      return;
+    }
+    currentViewTracker.record(
+      _currentConversationView(section: currentSection),
+    );
+  }
+}

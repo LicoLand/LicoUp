@@ -1,0 +1,121 @@
+name: Commit identity
+
+on:
+  push:
+    branches: [macos-release-candidate, macos-nightly-release-candidate]
+  # pull_request_target is deliberate: this gate writes a required commit status
+  # on PR heads (including forks, where a pull_request token is read-only) and
+  # runs the base branch's trusted workflow definition so a PR cannot amend the
+  # gate that judges it. It never checks out or executes PR code and requests
+  # only the statuses/pull-requests permissions it needs.
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: commit-identity-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  commit-identity:
+    if: github.event.deleted != true
+    name: Commit identity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify Agent-free commit attribution
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REF_NAME: ${{ github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          status_context='LicoUp / commit identity'
+          terminal_state='failure'
+          terminal_description='Commit identity policy rejected the contribution.'
+
+          set_status() {
+            gh api \
+              --method POST \
+              "repos/${REPOSITORY}/statuses/${HEAD_SHA}" \
+              -f state="$1" \
+              -f context="$status_context" \
+              -f description="$2" >/dev/null
+          }
+
+          settle() {
+            set_status "$terminal_state" "$terminal_description" || true
+          }
+          trap settle EXIT
+
+          set_status pending 'Commit identity policy is evaluating the contribution.'
+
+          evidence_file=$(mktemp)
+          trap 'rm -f "$evidence_file"; settle' EXIT
+          if [[ "$EVENT_NAME" == push ]]; then
+            case "$REF_NAME" in
+              macos-nightly-release-candidate) source_branch=nightly ;;
+              *) source_branch=release ;;
+            esac
+            source_sha=$(gh api "repos/${REPOSITORY}/git/ref/heads/${source_branch}" --jq '.object.sha')
+            test "$HEAD_SHA" = "$source_sha"
+            gh api "repos/${REPOSITORY}/commits/${HEAD_SHA}" | jq '[[.]]' >"$evidence_file"
+          else
+            gh api --paginate --slurp \
+              "repos/${REPOSITORY}/pulls/${PR_NUMBER}/commits?per_page=100" >"$evidence_file"
+          fi
+
+          jq -e \
+            '
+              def has_agent_identity:
+                test(
+                  "(^|[^A-Za-z0-9])(claude([ ._+-]*code)?|cursor([ ._+-]*agent)?|github[ ._+-]*copilot|copilot|codex|chatgpt|gemini|anthropic|openai|agent|bot)([^A-Za-z0-9]|$)|\\[bot\\]";
+                  "i"
+                );
+              def has_forbidden_attribution:
+                test(
+                  "(^|\\n)[ \\t]*(co-authored-by|co-committed-by|signed-off-by|authored-by|assisted-by|generated-by|written-by|pair-programmed-by|contributed-by|reviewed-by|suggested-by|reported-by)[ \\t]*:";
+                  "i"
+                ) or
+                test(
+                  "(^|\\n)[ \\t]*(claude( code)?|cursor( agent)?|github copilot|copilot|codex|chatgpt|gemini|anthropic|openai|[^\\n<]*(agent|bot))[^\\n]*<[^\\n>]+>";
+                  "i"
+                );
+              [.[][]] as $commits |
+              ($commits | length) > 0 and
+              all(
+                $commits[];
+                ((.author // {} | .type // "") == "User") and
+                (
+                  (
+                    ((.committer // {} | .type // "") == "User") and
+                    ((.committer // {} | .login // "") != "web-flow")
+                  ) or
+                  (
+                    ((.committer // {} | .login // "") == "web-flow") and
+                    .commit.verification.verified == true and
+                    .commit.verification.reason == "valid"
+                  )
+                ) and
+                ([.commit.author.name, .commit.author.email] | join(" ") | has_agent_identity | not) and
+                ([.commit.committer.name, .commit.committer.email] | join(" ") | has_agent_identity | not) and
+                (.commit.message | has_forbidden_attribution | not)
+              )
+            ' \
+            "$evidence_file" >/dev/null
+
+          terminal_state='success'
+          terminal_description='Commit identities match the contributing developer.'

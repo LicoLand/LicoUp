@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "licoup.client-release-acceptance-config.v3",
+  "reportSchemaVersion": "licoup.client-release-acceptance-report.v4",
+  "producerPolicy": "same-process-required",
+  "releaseTargetAuthority": {
+    "schemaVersion": "licoup.client-release-target-authority.v1",
+    "selectedTargetIds": [
+      "macos-direct-arm64"
+    ]
+  },
+  "maxClockSkewMs": 5000,
+  "sourceRoots": [
+    "package.json",
+    "package-lock.json",
+    "apps/desktop",
+    "packages/protocols",
+    "schemas/client_bridge",
+    "tools"
+  ],
+  "artifactReceipt": {
+    "ref": "build/reports/client-artifact-verification-receipts.json",
+    "schemaVersion": "licoup.client-artifact-verification-receipts.v3",
+    "producer": "tools/scripts/client-artifact-verification-receipts.mjs"
+  },
+  "artifacts": {
+    "macos-direct-arm64": {
+      "artifactKind": "macos-distribution-archive",
+      "ref": "build/apps/desktop/distribution/macos/LicoUp-macos-arm64.dmg",
+      "distributionManifestRef": "build/apps/desktop/distribution/macos/manifest.json",
+      "installArtifactRef": "build/apps/desktop/runnable/macos/release/LicoUp.app",
+      "entitlementsRef": "build/apps/desktop/signing/macos/release/ProductionRelease.resolved.entitlements",
+      "versionPolicy": "numeric-core",
+      "requiredArchitecture": "arm64",
+      "consumerVerificationPolicy": "provenance-or-verifiable-signature"
+    }
+  }
+}

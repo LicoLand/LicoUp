@@ -1,0 +1,115 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:licoup/src/contracts/generated/conversation_protocol.g.dart';
+import 'package:licoup/src/platform/native_client/native_cli_ports.dart';
+
+// Constants and the command frame builder are owned by the generated
+// conversation protocol contract (schemas/conversation_protocol/). These
+// aliases keep the transport API stable while every wire value stays
+// schema-derived. The wire protocol version is `licoup.stdio.v1`
+// (conversationProtocolVersion); it is declared once in the schema and every
+// frame is built and validated by the generated builder.
+const String stdioRpcProtocol = conversationProtocolVersion;
+const int stdioRpcMaxFrameBytes = conversationProtocolMaxFrameBytes;
+const int stdioRpcMaxStderrBytes = conversationProtocolMaxStderrBytes;
+const int stdioRpcMaxErrorCodeBytes = conversationProtocolMaxErrorCodeBytes;
+const int stdioRpcMaxArgs = conversationProtocolMaxArgs;
+const Duration stdioRpcShutdownTimeout = Duration(seconds: 2);
+
+/// Frames at or above this size decode on a helper isolate. Smaller frames
+/// decode inline so a control reply (cancel/steer/detach) never waits for a
+/// bulk history or catalog frame that is still decoding.
+const int stdioRpcBulkDecodeThresholdBytes = 256 * 1024;
+
+/// Framed bytes may accumulate up to this bound before the transport pauses
+/// stdout. Pausing stalls the pipe, so the native child process applies real
+/// backpressure instead of the client buffering an unbounded decode backlog.
+/// The chunk that reaches the watermark is still accepted, so the pending
+/// backlog is bounded by this watermark plus one stdout chunk; the framer may
+/// additionally retain one in-progress frame up to [stdioRpcMaxFrameBytes].
+const int stdioRpcMaxDecodeBacklogBytes = stdioRpcMaxFrameBytes;
+
+/// stdout resumes once the decode backlog drains below this watermark.
+const int stdioRpcResumeDecodeBacklogBytes = stdioRpcMaxFrameBytes ~/ 4;
+
+/// Bulk bytes the native producer may hold in flight ahead of a control frame.
+///
+/// The producer's own bounded bulk write budget reserves this much for the
+/// frames already admitted when a control frame becomes ready, so a cancel,
+/// steer or detach reply is never further behind bulk than this bound. It is
+/// congruent with `STDIO_RPC_BULK_WRITE_HIGH_WATERMARK_BYTES` in the native
+/// stdio server (`crates/licoup/src/bin/licoup/stdio_rpc/frame_lane.rs` in LicoUp-CLI):
+/// a producer that exceeds it is applying less backpressure than the transport
+/// accounted for, and the control-aware window closes at its declared bound.
+const int stdioRpcProducerBulkWriteBudgetBytes = stdioRpcMaxFrameBytes;
+
+/// Framed bytes the transport may retain while a control request is
+/// outstanding.
+///
+/// The ordinary watermark plus the producer's declared bulk write budget: the
+/// reply cannot be further behind bulk than the backlog already retained plus
+/// the bulk the producer may still be writing ahead of it. The shared stdout
+/// pipe is never paused below this bound while control is outstanding, because
+/// pausing there would stop the reader short of the reply it is waiting for.
+const int stdioRpcControlWindowBacklogBytes =
+    stdioRpcMaxDecodeBacklogBytes + stdioRpcProducerBulkWriteBudgetBytes;
+
+int _workflowSequence = 0;
+
+String newStdioRpcWorkflowId() {
+  _workflowSequence = (_workflowSequence + 1) & 0x7fffffff;
+  final instant = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
+  return 'lico-up-$instant-${_workflowSequence.toRadixString(36)}';
+}
+
+/// Encode one bounded command frame through the generated command builder.
+/// The map is validated by the schema-derived decoder before re-encoding, so
+/// any hand-written frame drift becomes an `invalid_request` failure here.
+Uint8List encodeStdioRpcFrame(Map<String, dynamic> request) {
+  late Uint8List encoded;
+  try {
+    final command = ConversationCommand.decode(
+      Uint8List.fromList(utf8.encode(jsonEncode(request))),
+    );
+    encoded = command.encode();
+  } on FormatException catch (error) {
+    if (error.message == 'request_too_large') {
+      throw const LicoClientRpcException('request_too_large');
+    }
+    throw const LicoClientRpcException('invalid_request');
+  } on Object {
+    throw const LicoClientRpcException('invalid_request');
+  }
+  return encoded;
+}
+
+bool validStdioRpcErrorCode(String value) {
+  if (value.isEmpty || value.length > stdioRpcMaxErrorCodeBytes) {
+    return false;
+  }
+  for (final codeUnit in value.codeUnits) {
+    final lowercase = codeUnit >= 0x61 && codeUnit <= 0x7a;
+    final digit = codeUnit >= 0x30 && codeUnit <= 0x39;
+    if (!lowercase && !digit && codeUnit != 0x5f) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool validStdioRpcArgs(List<String> args) {
+  if (args.isEmpty || args.length > conversationProtocolMaxClientArgs) {
+    return false;
+  }
+  var codeUnits = 0;
+  for (final arg in args) {
+    codeUnits += arg.length;
+    if (codeUnits > stdioRpcMaxArgumentCodeUnits) {
+      return false;
+    }
+  }
+  return true;
+}
+
+const int stdioRpcMaxArgumentCodeUnits = 1024 * 1024;

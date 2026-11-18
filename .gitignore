@@ -1,0 +1,162 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local env / secrets
+.env
+.env.local
+.env.*.local
+
+# Local generated and runtime assets
+*.log
+/build/
+packages/*/build/
+/.licoup-subagent-mcp-live.lock/
+/cache/
+coverage/
+.cache/
+outputs/
+reports/
+tmp/
+.tmp/
+apps/desktop/test/layout/production_baseline/failures/
+# Golden comparison residue. Flutter writes these on any pixel mismatch, and
+# the layout visual-manifest verifier rejects them as generated residue.
+apps/desktop/test/**/failures/
+
+# Node / Rust / Flutter
+node_modules/
+target/
+.gradle/
+.kotlin/
+crates/licoup-native/target/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+apps/desktop/.dart_tool/
+apps/desktop/.flutter-plugins
+apps/desktop/.flutter-plugins-dependencies
+apps/desktop/build/
+apps/desktop/coverage/
+
+# Platform generated outputs
+apps/desktop/android/.gradle/
+apps/desktop/android/build/
+apps/desktop/android/captures/
+apps/desktop/android/.cxx/
+apps/desktop/android/local.properties
+apps/desktop/android/key.properties
+**/key.properties
+**/local.properties
+**/GeneratedPluginRegistrant.java
+**/GeneratedPluginRegistrant.*
+apps/desktop/ios/build/
+apps/desktop/ios/Pods/
+apps/desktop/ios/.symlinks/
+apps/desktop/ios/Flutter/App.framework
+apps/desktop/ios/Flutter/Flutter.framework
+apps/desktop/ios/Flutter/Flutter.podspec
+apps/desktop/ios/Flutter/Generated.xcconfig
+apps/desktop/ios/Flutter/ephemeral/
+apps/desktop/ios/Flutter/app.flx
+apps/desktop/ios/Flutter/app.zip
+apps/desktop/ios/Flutter/flutter_assets/
+apps/desktop/ios/Flutter/flutter_export_environment.sh
+apps/desktop/ios/ServiceDefinitions.json
+apps/desktop/ios/Runner/GeneratedPluginRegistrant.*
+**/DerivedData/
+**/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.moved-aside
+apps/desktop/linux/flutter/ephemeral/
+apps/desktop/macos/Flutter/ephemeral/
+apps/desktop/macos/Pods/
+apps/desktop/windows/flutter/ephemeral/
+
+# Generated archives / binaries
+*.app
+*.AppImage
+*.asar
+*.dmg
+*.exe
+*.msi
+*.zip
+*.tar.gz
+*.tar.xz
+*.rar
+
+# Sensitive certificate, key, and provisioning material. Defense in depth only;
+# the local Git gates and the push Ruleset remain the effective publication
+# guards, and public-key-only suffixes (.pub, .asc, .gpg) stay trackable.
+*.cer
+*.cert
+*.csr
+*.certsigningrequest
+*.certSigningRequest
+*.crt
+*.der
+*.pem
+*.p7b
+*.p7c
+*.p12
+*.pfx
+*.pkcs12
+*.key
+*.p8
+*.pk8
+*.pkcs8
+*.jks
+*.keystore
+*.keychain
+*.keychain-db
+*.mobileprovision
+*.provisionprofile
+*.provisioningprofile
+
+# Local browser/test artifacts
+.playwright-cli/
+test-results/
+
+# Local planning, agent, and one-off work
+/report/
+/docs/plans/
+/apps/desktop/docs/plans/
+/design-qa.md
+/docs/reports/
+/.agents/
+/.claude/
+/.codex/
+/.cursor/
+/.kilo/
+/skills/
+/scripts/local/
+/tools/local/
+
+# Local plan tooling retained only for private development notes
+/tools/scripts/client-better-plan-evidence-ledger.mjs
+/tools/scripts/lib/better-plan-evidence-ledger.mjs
+/tools/scripts/lib/better-plan-evidence-ledger/
+
+# AGENTS.md is the tracked Agent guide: stable boundaries and task routes.
+# Shared development Skills stay in lico-dev. The other agent entrypoints
+# remain retired.
+AGENT.md
+CLAUDE.md
+
+# Local-machine agent history replay corpus is developer-local only. It must
+# never enter the remote repository; regenerate via transcript-record ingest.
+tests/replay-corpus/
+.commandcode/
+
+# Client state written by migration tools or local runs must stay out of the
+# repository tree; real data roots live outside the checkout.
+client-state/

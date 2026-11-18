@@ -1,0 +1,291 @@
+import 'dart:async';
+
+import 'package:presentation_contract/presentation_contract.dart';
+
+import 'package:licoup/src/application/features/plugin_management/controller/adapter_plugin_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_center_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/controller/package_recommendation_controller.dart';
+import 'package:licoup/src/application/features/plugin_management/models/adapter_plugin_catalog.dart';
+import 'package:licoup/src/application/features/plugin_management/models/package_center_catalog.dart';
+import 'package:licoup/src/application/features/settings/controller/optional_collaboration_controller.dart';
+import 'package:licoup/src/application/state/application_signal.dart';
+import 'package:licoup/src/presentation/plugin_management/plugin_management_projection.dart';
+import 'package:licoup/src/projections/close_broadcast_controller.dart';
+import 'package:licoup/src/presentation/presentation_semantics.dart';
+
+final class PluginManagementProjectionProducer
+    implements ProjectionSource<PluginManagementProjection> {
+  PluginManagementProjectionProducer({
+    required AdapterPluginController plugins,
+    required PackageCenterController packages,
+    required PackageRecommendationController recommendations,
+    required OptionalCollaborationController collaboration,
+  }) : _plugins = plugins,
+       _packages = packages,
+       _recommendations = recommendations,
+       _collaboration = collaboration,
+       _current = _read(plugins, packages, recommendations, collaboration) {
+    _subscriptions = [
+      plugins.changes.listen(_handleChange),
+      packages.changes.listen(_handleChange),
+      recommendations.changes.listen(_handleChange),
+      collaboration.changes.listen(_handleChange),
+    ];
+  }
+
+  final AdapterPluginController _plugins;
+  final PackageCenterController _packages;
+  final PackageRecommendationController _recommendations;
+  final OptionalCollaborationController _collaboration;
+  final StreamController<ProjectionUpdate<PluginManagementProjection>>
+  _changes =
+      StreamController<ProjectionUpdate<PluginManagementProjection>>.broadcast(
+        sync: true,
+      );
+  late final List<StreamSubscription<ApplicationChange>> _subscriptions;
+  PluginManagementProjection _current;
+  bool _disposed = false;
+
+  @override
+  PluginManagementProjection get current => _current;
+
+  @override
+  Stream<ProjectionUpdate<PluginManagementProjection>> get changes =>
+      _changes.stream;
+
+  void _handleChange(ApplicationChange change) {
+    if (_disposed) return;
+    final next = _read(_plugins, _packages, _recommendations, _collaboration);
+    if (next == _current) return;
+    _current = next;
+    _changes.add(ProjectionUpdate(next, trace: _trace(change.cause)));
+  }
+
+  Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+    for (final subscription in _subscriptions.reversed) {
+      await subscription.cancel();
+    }
+    await closeBroadcastController(_changes);
+  }
+
+  /// Phase of the adapter plugin domain alone. The combined projection carries
+  /// this value at the top level, so the plugin catalog presentation region
+  /// reads the same derivation.
+  static PresentationPhase pluginDomainPhase(AdapterPluginController plugins) =>
+      plugins.lastErrorCode.isNotEmpty
+      ? PresentationPhase.failed
+      : plugins.busy
+      ? PresentationPhase.loading
+      : PresentationPhase.ready;
+
+  /// Failure notice of the adapter plugin domain alone.
+  static PresentationNotice? pluginDomainNotice(
+    AdapterPluginController plugins,
+  ) {
+    final failure = plugins.lastErrorCode;
+    return failure.isEmpty
+        ? null
+        : _notice('plugin-management-failure', failure);
+  }
+
+  /// Phase of the optional collaboration domain alone.
+  static PresentationPhase collaborationDomainPhase(
+    OptionalCollaborationController collaboration,
+  ) => collaboration.errorCode.isNotEmpty
+      ? PresentationPhase.failed
+      : collaboration.busy
+      ? PresentationPhase.applying
+      : PresentationPhase.ready;
+
+  /// Failure notice of the optional collaboration domain alone.
+  static PresentationNotice? collaborationDomainNotice(
+    OptionalCollaborationController collaboration,
+  ) {
+    final failure = collaboration.errorCode;
+    return failure.isEmpty ? null : _notice('collaboration-failure', failure);
+  }
+
+  static PluginManagementProjection _read(
+    AdapterPluginController plugins,
+    PackageCenterController packages,
+    PackageRecommendationController recommendations,
+    OptionalCollaborationController collaboration,
+  ) {
+    final state = collaboration.state;
+    final catalog = collaboration.workflowCatalog;
+    final workflows = [
+      ...?catalog?.localDeploymentChoices,
+      ...?catalog?.mcpInstallChoices,
+    ];
+    return PluginManagementProjection(
+      plugins: [
+        for (final adapter in plugins.adapters) _adapter(adapter, packages),
+      ],
+      workflows: [
+        for (final workflow in workflows)
+          PresentationChoice(
+            id: workflow.id,
+            label: workflow.label,
+            description: workflow.description,
+          ),
+      ],
+      collaboration: OptionalCollaborationProjection(
+        statusLoaded: collaboration.statusLoaded,
+        enabled: state?.capabilityEnabled == true,
+        installed: state?.pluginInstalled == true,
+        loaded: state?.pluginLoaded == true,
+        runnerTrusted: state?.runnerTrust != null,
+        catalogLoaded: collaboration.catalogLoaded,
+        phase: collaborationDomainPhase(collaboration),
+        workflows: [
+          for (final workflow in workflows)
+            PresentationChoice(
+              id: workflow.id,
+              label: workflow.label,
+              description: workflow.description,
+            ),
+        ],
+        runtimeState: state,
+        installPlan: collaboration.installPlan,
+        workflowCatalog: catalog,
+        localDeploymentPlan: collaboration.workflows.localDeploymentPlan,
+        mcpInstallPlan: collaboration.workflows.mcpInstallPlan,
+        localServers: collaboration.workflows.localServers,
+        notice: collaborationDomainNotice(collaboration),
+      ),
+      recommendation: _recommendation(recommendations),
+      phase: pluginDomainPhase(plugins),
+      notice: pluginDomainNotice(plugins),
+    );
+  }
+
+  static PackageRecommendationProjection? _recommendation(
+    PackageRecommendationController recommendations,
+  ) {
+    final offer = recommendations.pending;
+    if (offer == null || offer.isEmpty) return null;
+    return PackageRecommendationProjection(
+      firstLaunch: offer.firstLaunch,
+      recommendations: [
+        for (final item in offer.recommendations)
+          PackageRecommendationItemProjection(
+            packageId: item.packageId,
+            label: item.label,
+            agentId: item.agentId,
+            archive: item.archive,
+          ),
+      ],
+    );
+  }
+
+  static PluginProjectionItem _adapter(
+    AdapterPluginDescriptor adapter,
+    PackageCenterController packages,
+  ) {
+    final installable =
+        adapter.supports(AdapterPluginLifecycleAction.install) ||
+        adapter.plugins.any(
+          (plugin) => plugin.supports(AdapterPluginLifecycleAction.install),
+        );
+    final uninstallable =
+        adapter.supports(AdapterPluginLifecycleAction.uninstall) ||
+        adapter.plugins.any(
+          (plugin) => plugin.supports(AdapterPluginLifecycleAction.uninstall),
+        );
+    final native = _nativePackage(adapter, packages);
+    final legacyInstalled =
+        adapter.installationState == 'installed' ||
+        adapter.plugins.any(
+          (plugin) => plugin.installationState == 'installed',
+        );
+    // The four facts come from the native package catalogue. An entry with no
+    // native package is not-installed on every one of them, which is exactly
+    // the absent-capability state the package center renders.
+    final facts = native?.facts ?? PackageFactsProjection.absent;
+    return PluginProjectionItem(
+      id: adapter.agentId,
+      name: _agentLabel(adapter.label),
+      description: adapter.plugins.isEmpty
+          ? adapter.laneFamily
+          : adapter.plugins
+                .map((plugin) => plugin.detail)
+                .where((value) => value.isNotEmpty)
+                .join('\n'),
+      enabled: facts.enabled,
+      installed: facts.installed || (native == null && legacyInstalled),
+      installable: installable,
+      uninstallable: uninstallable,
+      runtimeStateLabel: adapter.readiness,
+      protocolLabel: adapter.runtimeProtocol,
+      packageId: native?.packageId ?? '',
+      packageVersion: native?.version ?? '',
+      facts: facts,
+      // A bundled ACP bridge or a managed bridge the store does not own is an
+      // Agent-side installation; only a package the store holds is a LicoUp
+      // package installation.
+      agentInstallation: native == null,
+      capabilities: [
+        for (final capability in adapter.nativeCapabilities)
+          PluginCapabilityProjection(
+            id: capability.kind.wireName,
+            label: capability.kind.wireName,
+            detected: capability.detected,
+            running: capability.running,
+            pid: capability.pid,
+            processName: capability.processName,
+            port: capability.port,
+          ),
+      ],
+      plugins: [
+        for (final plugin in adapter.plugins)
+          PluginEntryProjection(
+            id: plugin.id,
+            label: plugin.label,
+            detail: plugin.detail,
+            installationState: plugin.installationState,
+            installable: plugin.supports(AdapterPluginLifecycleAction.install),
+            uninstallable: plugin.supports(
+              AdapterPluginLifecycleAction.uninstall,
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// The native package the store reported for one adapter.
+  ///
+  /// The adapter's own package id is tried first; otherwise each declared
+  /// plugin id is. Nothing is inferred from a naming convention: a package only
+  /// matches when the native catalogue names that exact id.
+  static PackageCatalogItem? _nativePackage(
+    AdapterPluginDescriptor adapter,
+    PackageCenterController packages,
+  ) {
+    final direct = packages.catalog.package(adapter.agentId);
+    if (direct != null) return direct;
+    for (final plugin in adapter.plugins) {
+      final item = packages.catalog.package(plugin.id);
+      if (item != null) return item;
+    }
+    return null;
+  }
+
+  static String _agentLabel(String value) {
+    final suffix = value.indexOf(' - ');
+    return suffix < 0 ? value : value.substring(0, suffix);
+  }
+
+  static PresentationNotice _notice(String id, String reason) =>
+      PresentationNotice(
+        id: id,
+        title: 'Plugin Management',
+        message: reason,
+        severity: PresentationNoticeSeverity.error,
+        reasonCode: reason,
+      );
+}
+
+TraceContext? _trace(ApplicationCause? cause) =>
+    cause?.traceId == null ? null : TraceContext(traceId: cause!.traceId);

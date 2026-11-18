@@ -1,0 +1,140 @@
+<div align="center">
+
+<img src="docs/assets/brand/readme-banner.svg" alt="LicoUp — orbit ice-cream cup brand banner" width="720">
+
+**Create value with your agents.**
+
+English · [简体中文](README.zh-CN.md)
+
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat-square)](LICENSE)
+[![Version: 0.3.0 (candidate) · latest release v0.2.1](https://img.shields.io/badge/version-0.3.0_candidate_%7C_release_v0.2.1-orange?style=flat-square)](docs/STATUS.md)
+[![Platforms: macOS · Windows · Linux](https://img.shields.io/badge/platforms-macOS_%C2%B7_Windows_%C2%B7_Linux-24292f?style=flat-square)](docs/COMPATIBILITY.md)
+
+</div>
+
+## Introduction
+
+LicoUp is an open-source agent collaboration client focused on cross-device connectivity and privacy. It makes organizing collaborative agent sessions across devices fast and effortless. Sensitive runtime data stays on the device. Default scenarios do not upload plaintext user content.
+
+Peer transfers currently use a preview end-to-end encryption path. The sender encrypts peer content before it leaves the device and does not send plaintext user content to a station. It supports agent collaboration across multiple stations and identities to build a truly distributed, agent-native collaboration platform.
+
+## Installation
+
+Download the latest macOS (Apple silicon) installer and drag LicoUp into
+Applications:
+
+[LicoUp-macos-arm64.dmg](https://github.com/LicoLand/LicoUp/releases/latest/download/LicoUp-macos-arm64.dmg)
+
+Digests, source archives, and future platform packages are on the
+[latest release](https://github.com/LicoLand/LicoUp/releases/latest) page.
+
+To build from source instead:
+
+| Toolchain | Requirement |
+| --- | --- |
+| Node.js | 22 or 24 |
+| Flutter | stable |
+
+```bash
+npm ci
+npm run client:get
+npm run client:analyze
+npm run client:test
+```
+
+The native sidecar binaries this client embeds are delivered by the
+[LicoUp-CLI](https://github.com/LicoLand/LicoUp-CLI) component repository —
+this repository no longer carries the Rust workspace that produces them.
+The Android and iOS implementations live in the sibling
+[LicoUp-Android](https://github.com/LicoLand/LicoUp-Android) and
+[LicoUp-iOS](https://github.com/LicoLand/LicoUp-iOS) repositories.
+
+> [!NOTE]
+> `0.3.0` is an unreleased delivery candidate (`tools/client-version.json`);
+> `v0.2.1` is the latest published GitHub Release. On desktop targets,
+> `macos-arm64` client shell is `supported` (`devices` is `preview`), while
+> agent conversation adapters are currently `unverified` (`0/13` verified,
+> send disabled) pending real CLI verification. Check [Status](docs/STATUS.md)
+> and the [compatibility matrix](docs/COMPATIBILITY.md) before relying on a
+> platform or feature.
+
+## Perspective
+
+Building a distributed collaboration network for the agentic era — where humans and agents across endpoints connect and create freely, while privacy and ownership remain firmly with the individual.
+
+| Principle | Idea |
+| --- | --- |
+| **Diverse** | Work with different agents, devices, and local setups. |
+| **Connected** | Move between local agents and trusted peer devices with less friction. |
+| **Open** | Keep the source, client protocols, and contribution path visible. |
+| **Integrated** | Give different tools one simple client experience. |
+
+## Capabilities
+
+| Capability | Description |
+| --- | --- |
+| **Multi-Agent Collaboration** | Connect agents across devices and endpoints into one collaborative network where your workflow and others' naturally converge. |
+| **Extending Agents** | Discover, customize, and add extensions to enhance agent capabilities, reduce operational cost, and maximize the value of every token. |
+| **Seamless Chat with Agents** | Bring agents into any conversation on demand. They join as visible participants, pick up context, and assist in place. |
+| **Customized Workflow** | Acativa is a strategy generator for your way of working: one-shot pipelines, branching flows, or self-looping agent cycles that keep iterating toward the goal. Bind each role's agent, model, and reasoning effort, authorize the exact revision, and let the conversation run it. |
+| **Privacy and Security** | Sensitive runtime data stays on the device; default scenarios do not upload plaintext. Peer transfers are end-to-end encrypted before they leave the sender, and no protected content leaves the client without explicit approval, unless you choose Telegram or another external messenger as a trusted channel — details in [Privacy concerns](#privacy-concerns). |
+
+## Privacy concerns
+
+**Local first.** Sensitive runtime data stays on the device. Default client
+scenarios upload no local paths, logs, conversation history, usage records,
+credentials, or plaintext user content. Provider-managed history is a separate
+authorization-bound path.
+
+**Endpoint-protected peer transfer (preview).** Content is encrypted with the
+selected peer's keys before it leaves the device; the receiving endpoint
+authenticates and verifies it before use. The `devices` module executes
+endpoint sessions over `licoarc-client` and connects to an explicitly
+configured `BadTower.js` (`licoarc.mailbox.v1`) candidate station. The station
+is untrusted — it supplies no algorithms, keys, or security policy, and its
+receipts are only delivery hints. Lico Arc owns the wire-observable protocol
+semantics; LicoUp keeps private keys, plaintext, history, backups, trust, and
+approvals. No hosted official network or Published Lico Arc Protocol Line is
+claimed.
+
+```mermaid
+flowchart LR
+    A["Client A<br/>local data"] --> B["User approves<br/>one peer transfer"]
+    B --> C["Encrypt on Client A"]
+    C --> D["Untrusted station<br/>Lico Arc ciphertext + minimum route"]
+    D --> E["Decrypt on Client B"]
+    E --> F["Client B<br/>local data"]
+```
+
+**Provider-managed history (planned).** Recovery restores every retained history
+object still available under the provider authorization. Provider access rules
+still apply, so recovery cannot bypass access or recreate missing,
+deleted, or expired objects. Identity recovery material is separately
+protected and does not lock default reads. Replacement-device recovery commits
+prepared identity authority and complete available history together. LicoUp
+does not use Stations for this history path. This path makes no mandatory
+notary or endpoint-evidence promise.
+
+**Only with your authorization.** LicoUp acts only under your authorization.
+For peer transfers, protected content leaves the client only as an
+end-to-end-encrypted transfer you authorized to another client, unless you
+choose Telegram or another external messenger as a trusted channel.
+
+## Documentation
+
+| Topic | English | Simplified Chinese |
+| --- | --- | --- |
+| Index | [Documentation index](docs/README.md) | — |
+| Domain language | [Context](CONTEXT.md) | — |
+| Current status | [Status](docs/STATUS.md) | [当前状态](docs/STATUS.zh-CN.md) |
+| User guide | [User guide](docs/functionality/USER-GUIDE.md) | [用户指南](docs/functionality/USER-GUIDE.zh-CN.md) |
+| Architecture | [Architecture](docs/architecture/README.md) | [架构](docs/architecture/README.zh-CN.md) |
+| Federation transport | [Lico Arc candidate station adapter](docs/protocols/licoarc-station-adapter.md) | [Lico Arc 候选通讯站 Adapter](docs/protocols/licoarc-station-adapter.zh-CN.md) |
+| Compatibility | [Compatibility](docs/COMPATIBILITY.md) | [兼容性](docs/COMPATIBILITY.zh-CN.md) |
+| Release packages | [Release packages](docs/RELEASE-PACKAGES.md) | [发布包结构](docs/RELEASE-PACKAGES.zh-CN.md) |
+| Security | [Security](SECURITY.md) | [安全](SECURITY.zh-CN.md) |
+| Contributing | [Contributing](CONTRIBUTING.md) | [参与贡献](CONTRIBUTING.zh-CN.md) |
+
+[Product definition](PRODUCT.md) · [Changelog](CHANGELOG.md) ·
+[Code of conduct](CODE_OF_CONDUCT.md) · Licensed under
+[`AGPL-3.0-or-later`](LICENSE)

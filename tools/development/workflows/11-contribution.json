@@ -1,0 +1,46 @@
+{
+  "id": "contribution",
+  "file": "11-contribution.json",
+  "title": {
+    "en": "Contribution and report refresh",
+    "zh": "提交与报告刷新"
+  },
+  "purpose": {
+    "en": "Prepare reviewable source and current local projections.",
+    "zh": "准备可审阅源码和最新本地投影。"
+  },
+  "owner": {
+    "en": "Contributor and integrator",
+    "zh": "贡献者与集成人"
+  },
+  "entry": {
+    "en": "Approved, reviewed engineering changes",
+    "zh": "改动已获授权并完成工程审阅"
+  },
+  "steps": [
+    {
+      "en": "Review candidate",
+      "zh": "审阅候选改动"
+    },
+    {
+      "en": "Refresh HTML",
+      "zh": "刷新 HTML"
+    },
+    {
+      "en": "Use existing contribution checks",
+      "zh": "执行现有提交检查"
+    }
+  ],
+  "exit": {
+    "en": "Candidate and report sources match the intended change scope.",
+    "zh": "候选改动与报告源符合交付范围。"
+  },
+  "failure": {
+    "en": "Correct report sources or failed engineering checks; never fabricate success.",
+    "zh": "修正报告源或失败检查，不虚构通过结果。"
+  },
+  "boundary": {
+    "en": "Report rendering does not rerun expensive checks or create a completion claim.",
+    "zh": "报告渲染不重复运行昂贵检查，也不自行宣告完成。"
+  }
+}

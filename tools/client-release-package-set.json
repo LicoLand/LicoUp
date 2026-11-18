@@ -1,0 +1,100 @@
+{
+  "schemaVersion": "licoup.client-release-package-set.v1",
+  "packages": [
+    {
+      "packageId": "org.licoland.adapter.claude-code",
+      "source": "LicoUp-package-org.licoland.adapter.claude-code.licopkg",
+      "payloadRole": "claude-code-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.antigravity",
+      "source": "LicoUp-package-org.licoland.adapter.antigravity.licopkg",
+      "payloadRole": "antigravity-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.kilo",
+      "source": "LicoUp-package-org.licoland.adapter.kilo.licopkg",
+      "payloadRole": "kilo-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.codex",
+      "source": "LicoUp-package-org.licoland.adapter.codex.licopkg",
+      "payloadRole": "codex-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.openclaw",
+      "source": "LicoUp-package-org.licoland.adapter.openclaw.licopkg",
+      "payloadRole": "openclaw-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.copilot",
+      "source": "LicoUp-package-org.licoland.adapter.copilot.licopkg",
+      "payloadRole": "copilot-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.pi",
+      "source": "LicoUp-package-org.licoland.adapter.pi.licopkg",
+      "payloadRole": "pi-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.converter.appearance",
+      "source": "LicoUp-package-org.licoland.converter.appearance.licopkg",
+      "payloadRole": "appearance-converter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.feature.analytics",
+      "source": "LicoUp-package-org.licoland.feature.analytics.licopkg",
+      "payloadRole": "analytics-package-payload"
+    },
+    {
+      "packageId": "org.licoland.feature.gateway",
+      "source": "LicoUp-package-org.licoland.feature.gateway.licopkg",
+      "payloadRole": "gateway-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.cursor",
+      "source": "LicoUp-package-org.licoland.adapter.cursor.licopkg",
+      "payloadRole": "cursor-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.deepseek",
+      "source": "LicoUp-package-org.licoland.adapter.deepseek.licopkg",
+      "payloadRole": "deepseek-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.kimi",
+      "source": "LicoUp-package-org.licoland.adapter.kimi.licopkg",
+      "payloadRole": "kimi-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.hermes",
+      "source": "LicoUp-package-org.licoland.adapter.hermes.licopkg",
+      "payloadRole": "hermes-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.lico-agent",
+      "source": "LicoUp-package-org.licoland.adapter.lico-agent.licopkg",
+      "payloadRole": "lico-agent-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.adapter.opencode",
+      "source": "LicoUp-package-org.licoland.adapter.opencode.licopkg",
+      "payloadRole": "opencode-adapter-package-payload"
+    },
+    {
+      "packageId": "org.licoland.feature.mcp",
+      "source": "LicoUp-package-org.licoland.feature.mcp.licopkg",
+      "payloadRole": "mcp-package-payload"
+    },
+    {
+      "packageId": "org.licoland.channel.telegram",
+      "source": "LicoUp-package-org.licoland.channel.telegram.licopkg",
+      "payloadRole": "telegram-channel-package-payload"
+    },
+    {
+      "packageId": "org.licoland.fixture.native-converter",
+      "source": "tests/fixtures/client_package_release/fixture-native-converter",
+      "payloadRole": "package-payload"
+    }
+  ]
+}

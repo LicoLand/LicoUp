@@ -1,0 +1,268 @@
+import 'dart:async';
+
+import 'package:licoup/src/application/state/application_signal.dart';
+
+enum ClientLifecyclePhase { idle, initializing, ready, failed, disposed }
+
+final class ClientLifecycleProjection {
+  const ClientLifecycleProjection._(this.phase);
+
+  final ClientLifecyclePhase phase;
+
+  bool get initialized => phase == ClientLifecyclePhase.ready;
+  bool get disposed => phase == ClientLifecyclePhase.disposed;
+}
+
+final class ClientBootstrapStep {
+  const ClientBootstrapStep({
+    required this.id,
+    required this.action,
+    this.requiredForStartup = true,
+  });
+
+  final String id;
+  final Future<void> Function() action;
+  final bool requiredForStartup;
+}
+
+final class ClientLifecycleReport {
+  const ClientLifecycleReport({required this.code, required this.stepId});
+
+  final String code;
+  final String stepId;
+}
+
+typedef ClientLifecycleReportSink = void Function(ClientLifecycleReport report);
+
+/// Receives the caught error and stack when a bootstrap step fails. The
+/// report itself stays bounded to stable codes and step ids; this sink is the
+/// local diagnostics channel.
+typedef ClientLifecycleFailureSink =
+    void Function(
+      ClientLifecycleReport report,
+      Object error,
+      StackTrace stackTrace,
+    );
+
+/// Runs the client bootstrap once, guards stale completion after disposal, and
+/// keeps failure evidence to stable step IDs and codes.
+final class ClientLifecycleCoordinator extends ApplicationStateOwner {
+  ClientLifecycleCoordinator({
+    required ClientLifecycleReportSink onReport,
+    ClientLifecycleFailureSink? onFailureDetail,
+  }) : _onReport = onReport,
+       _onFailureDetail = onFailureDetail;
+
+  static final RegExp _stableId = RegExp(r'^[a-z][a-z0-9._-]{0,63}$');
+
+  final ClientLifecycleReportSink _onReport;
+  final ClientLifecycleFailureSink? _onFailureDetail;
+  ClientLifecyclePhase _phase = ClientLifecyclePhase.idle;
+  ClientLifecycleProjection _projection = const ClientLifecycleProjection._(
+    ClientLifecyclePhase.idle,
+  );
+  Future<void>? _initializeFuture;
+  String _lastFailureStepId = '';
+  int _generation = 0;
+
+  ClientLifecycleProjection get projection => _projection;
+  String get lastFailureStepId => _lastFailureStepId;
+
+  Future<void> initialize({
+    required List<ClientBootstrapStep> sequentialSteps,
+    List<ClientBootstrapStep> backgroundSteps = const [],
+    bool runBackgroundSteps = true,
+    ClientBootstrapStep? finalStep,
+  }) {
+    if (_phase == ClientLifecyclePhase.disposed) {
+      _report(
+        const ClientLifecycleReport(
+          code: 'client_lifecycle_disposed',
+          stepId: 'initialize',
+        ),
+      );
+      return Future<void>.value();
+    }
+    final active = _initializeFuture;
+    if (active != null) return active;
+    if (_phase == ClientLifecyclePhase.ready) return Future<void>.value();
+    final generation = ++_generation;
+    late final Future<void> initialization;
+    initialization =
+        _run(
+          generation: generation,
+          sequentialSteps: sequentialSteps,
+          backgroundSteps: backgroundSteps,
+          runBackgroundSteps: runBackgroundSteps,
+          finalStep: finalStep,
+        ).whenComplete(() {
+          if (identical(_initializeFuture, initialization)) {
+            _initializeFuture = null;
+          }
+        });
+    _initializeFuture = initialization;
+    return initialization;
+  }
+
+  Future<void> _run({
+    required int generation,
+    required List<ClientBootstrapStep> sequentialSteps,
+    required List<ClientBootstrapStep> backgroundSteps,
+    required bool runBackgroundSteps,
+    required ClientBootstrapStep? finalStep,
+  }) async {
+    if (!_transition(ClientLifecyclePhase.initializing, stepId: 'initialize')) {
+      return;
+    }
+    _lastFailureStepId = '';
+    var activeStepId = 'initialize';
+    try {
+      for (final step in sequentialSteps) {
+        activeStepId = step.id;
+        try {
+          await step.action();
+        } catch (_) {
+          if (step.requiredForStartup) rethrow;
+          if (!_isCurrent(generation)) return;
+          _report(
+            ClientLifecycleReport(
+              code: 'client_optional_step_unavailable',
+              stepId: _safeStepId(step.id),
+            ),
+          );
+        }
+        if (!_isCurrent(generation)) return;
+      }
+      if (runBackgroundSteps && backgroundSteps.isNotEmpty) {
+        // Update checks and optional service warmups must not delay the
+        // selected page's entry hook or the ready state. Each task owns its
+        // failure report and remains active until its own work settles.
+        for (final step in backgroundSteps) {
+          unawaited(_runBackgroundStep(step, generation));
+        }
+      }
+      if (!_isCurrent(generation)) return;
+      if (finalStep != null) {
+        activeStepId = finalStep.id;
+        await finalStep.action();
+        if (!_isCurrent(generation)) return;
+      }
+      _transition(ClientLifecyclePhase.ready, stepId: 'initialize_complete');
+    } catch (error, stackTrace) {
+      if (!_isCurrent(generation)) return;
+      _lastFailureStepId = _safeStepId(activeStepId);
+      _transition(ClientLifecyclePhase.failed, stepId: _lastFailureStepId);
+      final report = ClientLifecycleReport(
+        code: 'client_initialize_failed',
+        stepId: _lastFailureStepId,
+      );
+      _report(report);
+      _emitFailureDetail(report, error, stackTrace);
+    }
+  }
+
+  Future<void> _runBackgroundStep(
+    ClientBootstrapStep step,
+    int generation,
+  ) async {
+    try {
+      await step.action();
+    } catch (error, stackTrace) {
+      if (!_isCurrent(generation)) return;
+      final report = ClientLifecycleReport(
+        code: 'client_background_step_failed',
+        stepId: _safeStepId(step.id),
+      );
+      _report(report);
+      _emitFailureDetail(report, error, stackTrace);
+    }
+  }
+
+  /// Diagnostics must never break the lifecycle they observe.
+  void _emitFailureDetail(
+    ClientLifecycleReport report,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    try {
+      _onFailureDetail?.call(report, error, stackTrace);
+    } catch (_) {}
+  }
+
+  bool _isCurrent(int generation) =>
+      _phase != ClientLifecyclePhase.disposed && generation == _generation;
+
+  bool _transition(ClientLifecyclePhase next, {required String stepId}) {
+    if (!_legalTransitions[_phase]!.contains(next)) {
+      _report(
+        ClientLifecycleReport(
+          code: 'client_lifecycle_transition_invalid',
+          stepId: _safeStepId(stepId),
+        ),
+      );
+      return false;
+    }
+    _phase = next;
+    _projection = ClientLifecycleProjection._(next);
+    publishChange();
+    return true;
+  }
+
+  void _report(ClientLifecycleReport report) {
+    _onReport(report);
+  }
+
+  static const Map<ClientLifecyclePhase, Set<ClientLifecyclePhase>>
+  _legalTransitions = {
+    ClientLifecyclePhase.idle: {
+      ClientLifecyclePhase.initializing,
+      ClientLifecyclePhase.disposed,
+    },
+    ClientLifecyclePhase.initializing: {
+      ClientLifecyclePhase.ready,
+      ClientLifecyclePhase.failed,
+      ClientLifecyclePhase.disposed,
+    },
+    ClientLifecyclePhase.ready: {ClientLifecyclePhase.disposed},
+    ClientLifecyclePhase.failed: {
+      ClientLifecyclePhase.initializing,
+      ClientLifecyclePhase.disposed,
+    },
+    ClientLifecyclePhase.disposed: {},
+  };
+
+  ClientLifecycleReport transitionForTesting(
+    ClientLifecyclePhase next, {
+    required String stepId,
+  }) {
+    final safeStepId = _safeStepId(stepId);
+    if (_legalTransitions[_phase]!.contains(next)) {
+      _transition(next, stepId: safeStepId);
+      return ClientLifecycleReport(
+        code: 'client_lifecycle_transition_applied',
+        stepId: safeStepId,
+      );
+    }
+    final rejection = ClientLifecycleReport(
+      code: 'client_lifecycle_transition_invalid',
+      stepId: safeStepId,
+    );
+    _report(rejection);
+    return rejection;
+  }
+
+  static String _safeStepId(String value) {
+    final normalized = value.trim().toLowerCase();
+    return _stableId.hasMatch(normalized)
+        ? normalized
+        : 'unknown_background_step';
+  }
+
+  @override
+  void dispose() {
+    if (_phase == ClientLifecyclePhase.disposed) return;
+    _generation += 1;
+    _transition(ClientLifecyclePhase.disposed, stepId: 'dispose');
+    super.dispose();
+  }
+}

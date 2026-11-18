@@ -1,0 +1,323 @@
+import Cocoa
+import FlutterMacOS
+
+class MainFlutterWindow: NSWindow, NSWindowDelegate {
+  /// Must stay in sync with `AppleControlMetrics.topBarHeight` in Flutter.
+  private let flutterTopBarHeight: CGFloat = 48
+
+  /// The traffic-light anchor rect most recently reported by the active
+  /// Flutter layout, in window logical points with y down from the window
+  /// content's top-left. nil (nothing reported yet, or cleared) keeps the
+  /// legacy 48pt top-band placement.
+  private var trafficLightAnchorRect: NSRect?
+
+  /// Clears AppKit layer backgrounds so transparent Flutter pixels reveal
+  /// the desktop behind the window instead of the default black backing.
+  private func applyTransparentLayer(to view: NSView) {
+    view.wantsLayer = true
+    view.layer?.isOpaque = false
+    view.layer?.backgroundColor = NSColor.clear.cgColor
+  }
+
+  /// Installing a replacement `contentView` (below) makes AppKit clear
+  /// `contentViewController`, which would deallocate the FlutterViewController
+  /// and shut its engine (and the Dart VM) down. Retain the controller for
+  /// the window's lifetime so the engine keeps rendering into its view inside
+  /// the rounded container.
+  private var retainedFlutterViewController: FlutterViewController?
+  private let reduceMotionStream = MacReduceMotionStream()
+
+  override func awakeFromNib() {
+    let flutterViewController = FlutterViewController()
+    let windowFrame = self.frame
+    self.contentViewController = flutterViewController
+    self.retainedFlutterViewController = flutterViewController
+    self.titleVisibility = .hidden
+    self.titlebarAppearsTransparent = true
+    self.styleMask.insert(.fullSizeContentView)
+    self.isMovableByWindowBackground = true
+    flutterViewController.backgroundColor = .clear
+    self.backgroundColor = .clear
+    self.isOpaque = false
+    if #available(macOS 11.0, *) {
+      self.titlebarSeparatorStyle = .none
+    }
+    self.setFrame(windowFrame, display: true)
+    self.minSize = NSSize(width: 760, height: 560)
+    if self.frame.width < 1040 || self.frame.height < 720 {
+      self.setContentSize(NSSize(width: 1040, height: 720))
+      self.center()
+    }
+
+    // Concentric with the collapsed shell search circle:
+    // R_window = searchButtonRadius (16) + edgeInset (8) = 24.
+    let windowCornerRadius: CGFloat = 24
+
+    // Clear container: the Flutter shell owns the window ground (the
+    // galaxy in dark, the solid palette ground in light); this view only
+    // carries the continuous corner clipping.
+    let windowBackdropView = NSView(
+      frame: flutterViewController.view.frame
+    )
+    windowBackdropView.autoresizingMask = [.width, .height]
+    applyTransparentLayer(to: windowBackdropView)
+    windowBackdropView.layer?.cornerRadius = windowCornerRadius
+    windowBackdropView.layer?.masksToBounds = true
+    windowBackdropView.layer?.cornerCurve = .continuous
+    flutterViewController.view.autoresizingMask = [.width, .height]
+    flutterViewController.view.frame = windowBackdropView.bounds
+    applyTransparentLayer(to: flutterViewController.view)
+    // Corner shape is owned by the backdrop container; the Flutter view stays
+    // unclipped so transparent margin gutters do not expose a black layer.
+    flutterViewController.view.layer?.cornerRadius = windowCornerRadius
+    flutterViewController.view.layer?.cornerCurve = .continuous
+    windowBackdropView.addSubview(flutterViewController.view)
+    self.contentView = windowBackdropView
+    applyTransparentLayer(to: self.contentView!)
+
+    // Align now and after Flutter finishes its first layout passes. Do not hook
+    // didUpdate — that fires far too often and still cannot fix a bad mapping.
+    self.alignTrafficLightButtonsWithTabBar()
+    DispatchQueue.main.async { [weak self] in
+      self?.alignTrafficLightButtonsWithTabBar()
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+      self?.alignTrafficLightButtonsWithTabBar()
+    }
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(windowDidResizeNotification(_:)),
+      name: NSWindow.didResizeNotification,
+      object: self
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(windowDidEndLiveResizeNotification(_:)),
+      name: NSWindow.didEndLiveResizeNotification,
+      object: self
+    )
+
+    RegisterGeneratedPlugins(registry: flutterViewController)
+    FlutterEventChannel(
+      name: "licoup/accessibility/reduce_motion",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    ).setStreamHandler(reduceMotionStream)
+    self.delegate = self
+    if MacStatusBarPresencePolicy.createsStatusItemAtLaunch {
+      MacStatusBarPresence.shared.attach(mainWindow: self)
+    }
+
+    // Window-chrome bridge for the Flutter shell's hidden-titlebar chrome:
+    // hand in-flight drags to AppKit and offer deliberate zoom, mirroring the
+    // native title-bar contract under the shell's control.
+    let windowChromeChannel = FlutterMethodChannel(
+      name: "licoup/window_chrome",
+      binaryMessenger: flutterViewController.engine.binaryMessenger
+    )
+    windowChromeChannel.setMethodCallHandler { [weak self] call, result in
+      guard let self = self else {
+        result(nil)
+        return
+      }
+      switch call.method {
+      case "dragWindow":
+        // performDrag runs a modal tracking loop that consumes the rest of
+        // this mouse stream; Flutter keeps no further drag events, which is
+        // the intended handoff.
+        if let event = NSApp.currentEvent {
+          self.performDrag(with: event)
+        }
+        result(nil)
+      case "toggleZoom":
+        self.zoom(nil)
+        result(nil)
+      case "setTrafficLightAnchor":
+        // A rect arrives as [x, y, width, height] in window logical points,
+        // y-down from the content top-left; nil (the Dart clear call)
+        // restores the legacy 48pt top-band placement.
+        if let values = call.arguments as? [NSNumber], values.count == 4 {
+          self.trafficLightAnchorRect = NSRect(
+            x: values[0].doubleValue,
+            y: values[1].doubleValue,
+            width: values[2].doubleValue,
+            height: values[3].doubleValue
+          )
+        } else {
+          self.trafficLightAnchorRect = nil
+        }
+        self.alignTrafficLightButtonsWithTabBar()
+        // Reply with the light cluster's edges in the same logical
+        // coordinates so the layout can size its chrome around the actual
+        // lights; nil when the buttons are unavailable.
+        if let edges = self.trafficLightClusterEdges() {
+          result(["leading": edges.leading, "trailing": edges.trailing])
+        } else {
+          result(nil)
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+
+    super.awakeFromNib()
+  }
+
+  override func performClose(_ sender: Any?) {
+    if MacStatusBarPresence.shared.windowShouldClose(self) {
+      super.performClose(sender)
+    }
+  }
+
+  func windowShouldClose(_ sender: NSWindow) -> Bool {
+    MacStatusBarPresence.shared.windowShouldClose(sender)
+  }
+
+  @objc private func windowDidResizeNotification(_ notification: Notification) {
+    alignTrafficLightButtonsWithTabBar()
+  }
+
+  @objc private func windowDidEndLiveResizeNotification(
+    _ notification: Notification
+  ) {
+    alignTrafficLightButtonsWithTabBar()
+  }
+
+  /// Both cluster edges in content-view coordinates (y-down logical
+  /// points): `leading` is the close button's minX, `trailing` the zoom
+  /// button's maxX. The x axis is unaffected by contentView flipping.
+  private func trafficLightClusterEdges() -> (
+    leading: Double, trailing: Double
+  )? {
+    guard
+      let closeButton = self.standardWindowButton(.closeButton),
+      let zoomButton = self.standardWindowButton(.zoomButton),
+      let contentView = self.contentView
+    else {
+      return nil
+    }
+    let closeFrame = closeButton.superview?.convert(
+      closeButton.frame,
+      to: contentView
+    ) ?? closeButton.frame
+    let zoomFrame = zoomButton.superview?.convert(
+      zoomButton.frame,
+      to: contentView
+    ) ?? zoomButton.frame
+    return (Double(closeFrame.minX), Double(zoomFrame.maxX))
+  }
+
+  private func alignTrafficLightButtonsWithTabBar() {
+    let buttonTypes: [NSWindow.ButtonType] = [
+      .closeButton,
+      .miniaturizeButton,
+      .zoomButton,
+    ]
+    guard
+      let closeButton = self.standardWindowButton(.closeButton),
+      let buttonContainer = closeButton.superview,
+      let contentView = self.contentView
+    else {
+      return
+    }
+
+    buttonContainer.layoutSubtreeIfNeeded()
+
+    let buttonHeight = closeButton.frame.height
+    // The band the lights align within: the layout-reported anchor rect when
+    // one is available, otherwise today's full-width 48pt top band. Equal top
+    // / bottom inset inside the band, and matching left inset so the close
+    // light sits with equal left/top/bottom spacing.
+    let band: NSRect
+    if let trafficLightAnchorRect {
+      band = trafficLightAnchorRect
+    } else {
+      band = NSRect(
+        x: 0,
+        y: 0,
+        width: contentView.bounds.width,
+        height: flutterTopBarHeight
+      )
+    }
+    let inset = max((band.height - buttonHeight) / 2.0, 0.0)
+
+    // Map the Flutter band (y-down logical points from the content top-left)
+    // into the native traffic-light container. Centering only inside the
+    // short native titlebar container leaves the lights too high relative to
+    // the Flutter chrome.
+    let desiredYInContent: CGFloat
+    if contentView.isFlipped {
+      desiredYInContent = band.minY + inset
+    } else {
+      desiredYInContent =
+        contentView.bounds.height - band.minY - inset - buttonHeight
+    }
+    let desiredOriginInContent = NSPoint(
+      x: band.minX + inset,
+      y: desiredYInContent
+    )
+    let originInContainer = buttonContainer.convert(
+      desiredOriginInContent,
+      from: contentView
+    )
+
+    let miniaturizeButton = self.standardWindowButton(.miniaturizeButton)
+    let gap: CGFloat
+    if let miniaturizeButton {
+      gap = max(miniaturizeButton.frame.minX - closeButton.frame.maxX, 6)
+    } else {
+      gap = 6
+    }
+
+    var nextX = originInContainer.x
+    let originY = originInContainer.y
+    for buttonType in buttonTypes {
+      guard let button = self.standardWindowButton(buttonType) else {
+        continue
+      }
+      button.setFrameOrigin(NSPoint(x: nextX, y: originY))
+      nextX = button.frame.maxX + gap
+    }
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
+}
+
+/// Flutter's macOS embedder does not forward this NSWorkspace preference.
+private final class MacReduceMotionStream: NSObject, FlutterStreamHandler {
+  private var observation: NSObjectProtocol?
+
+  func onListen(
+    withArguments arguments: Any?,
+    eventSink events: @escaping FlutterEventSink
+  ) -> FlutterError? {
+    removeObservation()
+    let workspace = NSWorkspace.shared
+    observation = workspace.notificationCenter.addObserver(
+      forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+      object: nil,
+      queue: .main
+    ) { _ in
+      events(workspace.accessibilityDisplayShouldReduceMotion)
+    }
+    events(workspace.accessibilityDisplayShouldReduceMotion)
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    removeObservation()
+    return nil
+  }
+
+  private func removeObservation() {
+    if let observation {
+      NSWorkspace.shared.notificationCenter.removeObserver(observation)
+      self.observation = nil
+    }
+  }
+
+  deinit {
+    removeObservation()
+  }
+}
