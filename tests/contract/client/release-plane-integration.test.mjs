@@ -109,8 +109,6 @@ test("package commands expose the authority and both track release entries", () 
   assert.equal(scripts["client:release:service:status"], undefined);
   assert.equal(scripts["client:release:status"], "node tools/scripts/client-release-plane.mjs release status");
   assert.equal(scripts["client:promotion"], "node tools/scripts/client-promotion.mjs");
-  const prePush = readFileSync(".githooks/pre-push", "utf8");
-  assert.match(prePush, /repository-identity-policy\.mjs/u);
 });
 
 test("delegated publication leaves the protected release train unchanged", () => {

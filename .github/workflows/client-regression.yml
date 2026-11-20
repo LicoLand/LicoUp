@@ -1,7 +1,7 @@
 name: Client regression
 
 # Nightly full-regression graph for the LicoUp client. This workflow is
-# scheduled, never a per-PR gate: Client CI, Branch flow, and Commit identity
+# scheduled, never a per-PR gate: Client CI and Branch flow
 # stay changed-path-scoped and untouched. Failures here are a
 # traceable signal, not an author block.
 

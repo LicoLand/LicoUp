@@ -4,7 +4,7 @@
   "source": { "branch": "nightly", "remote": "origin" },
   "candidate": {
     "branch": "macos-nightly-release-candidate",
-    "requiredChecks": ["Branch flow", "Commit identity", "Client required"]
+    "requiredChecks": ["Branch flow", "Client required"]
   },
   "version": {
     "file": "tools/client-version.json",

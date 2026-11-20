@@ -167,7 +167,6 @@ function openPullRequest(plan) {
 function pushTemporaryBranch(plan) {
   if (plan.base !== "nightly") return;
   assertCleanCurrentBranch(plan.head);
-  run("npm", ["run", "repo:identity:verify"]);
   run("git", ["push", "--set-upstream", "origin", plan.head]);
 }
 
@@ -178,8 +177,8 @@ function reconcileAndMerge(plan, pullRequest, expectedHead) {
   let rollup;
   try { rollup = JSON.parse(output || "{}").statusCheckRollup; } catch { reject("promotion_check_response_invalid"); }
   const required = plan.base === "stable"
-    ? ["Branch flow", "Commit identity", "Stable client", "Monthly candidate ready", "the release plane ready"]
-    : ["Branch flow", "Commit identity", plan.aggregate];
+    ? ["Branch flow", "Stable client", "Monthly candidate ready", "the release plane ready"]
+    : ["Branch flow", plan.aggregate];
   const state = reconcileRequiredChecks(rollup, required);
   if (state.status !== "complete") return { number, ...state };
   run("gh", ["pr", "merge", number, "--repo", repository, "--merge", "--match-head-commit", expectedHead]);

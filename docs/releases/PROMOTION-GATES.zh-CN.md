@@ -11,7 +11,7 @@
 | `nightly` → `stable` | `Stable client` | macOS arm64 客户端只构建并安装一次，随后启动同一个已安装 App，并通过有界存活验证。 |
 | `stable` → `release` | `Release ready` | 仅运行 Node 发布策略；不重复构建、安装、发布签名或公开发布客户端。 |
 
-三个目标分支都要求 `Branch flow` 和 `Commit identity`，并且只额外
+三个目标分支都要求 `Branch flow`，并且只额外
 要求各自入站路径拥有的聚合检查。三段都使用 merge commit。发布切分期间不得改动
 Rulesets、Required Check 名称或默认分支。
 
@@ -85,7 +85,7 @@ the release plane 在现有干净仓库的 `release` 分支上使用
 
 引擎在精确 release 修订创建 `macos-release-candidate`，不创建提交或 Pull Request。
 完成依赖准备和产品门禁后推送同一个候选，观察绑定精确 SHA、分支、工作流、run 和
-attempt 的 `Branch flow`、`Commit identity`、`Release ready` 成功作业后，
+attempt 的 `Branch flow` 与 `Release ready` 成功作业后，
 才允许构建或签名。缺少或运行中的检查持续等待同一个候选，没有取消截止时间；失败或
 跳过均阻止发布。候选永不合回，仅在公开验证完成后清理。
 

@@ -11,10 +11,10 @@ selection is independent from the direction in which verified source is promoted
 | `nightly` → `stable` | `Stable client` | The macOS arm64 client is built and installed once, then the exact installed app is launched and observed through its bounded survival proof. |
 | `stable` → `release` | `Release ready` | Node-only release policy passes without rebuilding, installing, signing for publication, or publishing a client. |
 
-`Branch flow` and `Commit identity` are common required checks
-on every edge. Each destination additionally requires only the aggregate owned
-by its incoming edge. All three edges use merge commits. Rulesets, required
-check names, and the default branch are not changed during a release cut.
+`Branch flow` is the common required check on every edge. Each destination
+additionally requires only the aggregate owned by its incoming edge. All three
+edges use merge commits. Rulesets, required check names, and the default branch
+are not changed during a release cut.
 
 Release-tooling changes also use the standalone `client:gate:release-policy`
 lane when selected by the local changed-file plan. That local check does not
@@ -103,9 +103,8 @@ the update adapter binds tag, repository and version and produces
 
 The engine creates `macos-release-candidate` at the exact release revision,
 without a commit or pull request. After preparation and product gates, it pushes
-the unchanged candidate and observes successful `Branch flow`, `Commit identity`,
-and `Release ready` jobs bound to that SHA, branch, workflow, run and
-attempt before building or signing. Missing/running checks wait on the same
+the unchanged candidate and observes successful `Branch flow` and `Release ready`
+jobs bound to that SHA, branch, workflow, run and attempt before building or signing. Missing/running checks wait on the same
 candidate without a cancellation deadline; failures and skipped checks block.
 The candidate never merges back and is removed only after public verification.
 

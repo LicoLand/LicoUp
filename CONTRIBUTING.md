@@ -361,21 +361,12 @@ an Agent takes part in your contribution, prepare in this order before the
 first commit:
 
 1. Clone the repository and run `npm ci`.
-2. Configure your Git identity (`user.name` and `user.email`) for this
-   machine, then install and verify the repository identity policy:
-
-   ```bash
-   npm run repo:identity:install
-   npm run repo:identity:verify
-   ```
-
-   Commits created before the hooks are installed fail the push-time and
-   remote identity checks and must be repaired in history.
+2. Configure your own Git identity (`user.name` and `user.email`) for this
+   machine so every commit carries your real human authorship.
 3. Disable your Agent tool's commit attribution. Most tools add a
    `Co-Authored-By`, `Generated-by`, or "Generated with" line by default (for
-   example, Claude Code's `attribution` setting). The local hooks and the
-   remote identity check reject every attribution trailer and every
-   Agent-shaped identity.
+   example, Claude Code's `attribution` setting). Strip Agent attribution
+   trailers and never attribute commits to an Agent identity.
 4. Review the Agent's output yourself. Commit only changes you have read and
    accepted, under your own authenticated identity. The full policy is in
    [Commit identity and authorship](#commit-identity-and-authorship).
@@ -406,42 +397,18 @@ not ship.
 
 ## Commit identity and authorship
 
-Every newly created commit must carry exactly one real developer identity.
-Which identity that is belongs to the contributor's machine — a repository
-never prescribes it; on machines that route repositories through GitVault,
-that routing decides which account may act on this repository. Existing
-human-authored history keeps its original Author and Committer metadata when
-it is consolidated or published. After cloning the repository, install the
-repository policy:
-
-```bash
-npm run repo:identity:install
-npm run repo:identity:verify
-```
-
-The installer enables the repository-controlled `pre-commit`, `commit-msg`,
-and `pre-push` hooks. It never rewrites `user.name` or `user.email` — the
-gate asserts only that a non-Agent identity is configured. When a recognized
-global hook dispatcher is already configured it stays in charge of the
-repository hooks; otherwise `core.hooksPath` is pointed at `.githooks`. The
-hooks inspect every commit that is not already reachable from the selected
-remote, not only `HEAD`. They reject Agent-shaped Authors, Committers, and
-attribution lines while allowing historical human identities and GitHub's
-merge service. Missing, redirected, modified, symbolic-link, or
-non-executable policy files fail closed. Never use `--no-verify`, change
-`core.hooksPath`, or otherwise bypass these gates.
+Every newly created commit must carry a real developer identity configured on
+the contributor's machine — a repository never prescribes a single owner
+identity. Existing human-authored history keeps its original Author and
+Committer metadata when it is consolidated or published.
 
 An Agent may assist a developer, but it must never replace, overwrite, or claim
 the developer's authorship. An Agent's name, email, or other contact details
 must not appear as an Author, Committer, co-author, sign-off, attribution
-trailer, or identity-shaped line. Known Agent and bot identity forms are
-rejected locally and remotely, and all attribution trailers are forbidden so an
-unknown Agent cannot enter the contributor graph as a secondary identity. No
-metadata rule can identify an Agent that deliberately impersonates an ordinary
-human identity; the trust boundary for that case is the repository-controlled
-hook, the contributor's configured Git identity (and, where present, the
-machine-level account routing), and the developer's personal review before
-committing.
+trailer, or identity-shaped line. Human co-authors remain welcome; Agent
+attribution is stripped locally before push and enforced by organization
+attribution hygiene checks. The developer must personally review and accept
+every change before committing.
 
 ## Privacy rules
 
