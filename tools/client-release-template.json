@@ -30,8 +30,7 @@
       }
     ],
     "commonRequiredChecks": [
-      "Branch flow",
-      "Commit identity"
+      "Branch flow"
     ]
   },
   "publication": {

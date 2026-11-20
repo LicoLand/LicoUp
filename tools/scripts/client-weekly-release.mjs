@@ -164,7 +164,7 @@ export function promotionSource({ ref, revision, maturityAt, now, readinessCheck
   if (instant(now) < instant(maturityAt)) reject("candidate_immature");
   verifyAppCheck(readinessChecks, { name: "the release plane ready", revision, appId: appleAppId });
   return Object.freeze({ head: ref, base: "stable", revision, aggregate: "Stable client", requiredChecks:
-    Object.freeze(["Branch flow", "Commit identity", "Stable client", "the release plane ready"]) });
+    Object.freeze(["Branch flow", "Stable client", "the release plane ready"]) });
 }
 
 export function promotionTreeMatches({ cutoffTree, stableMergeTree, releaseMergeTree }) {

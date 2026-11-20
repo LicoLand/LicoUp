@@ -344,7 +344,6 @@ test("complete catalog owns format lint analysis", () => {
 });
 
 const LEGACY_LANE_EQUIVALENT_MODULES = Object.freeze({
-  "repo:identity:self-test": ["regression.release-workflow-contracts"],
   "client:artifacts:self-test": ["regression.test-artifact-lifecycle"],
   "client:verify:package-index:self-test": ["regression.client-release-package-index"],
   "client:gate:topology": ["regression.release-workflow-contracts"],

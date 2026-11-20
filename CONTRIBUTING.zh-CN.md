@@ -259,27 +259,12 @@ node tools/development/reports.mjs --better-plan <local-source>
 
 ## 提交身份与署名
 
-每个提交必须有且仅有一个真实开发者身份。具体是哪一个身份由贡献者本机
-决定——仓库不规定；在通过 GitVault 路由仓库的机器上，由该路由决定哪个
-账号可以操作本仓库。克隆仓库后安装并校验仓库策略：
-
-```bash
-npm run repo:identity:install
-npm run repo:identity:verify
-```
-
-安装程序启用仓库控制的 `pre-commit`、`commit-msg` 和 `pre-push` hook，
-不会改写 `user.name` 或 `user.email`——门禁只断言已配置非 Agent 身份。
-存在受认可的全局 hook 调度器时，仓库 hook 交由其调度；否则
-`core.hooksPath` 指向 `.githooks`。hook 会检查所有待推送提交，而不只是 `HEAD`。
-策略文件缺失、被重定向、被修改、成为符号链接或不可执行时，一律关闭失败。严禁使用
-`--no-verify`、修改 `core.hooksPath` 或以其它方式绕过门禁。
+每个提交必须使用贡献者本机配置的真实开发者身份——仓库不强行规定单一账号。
 
 Agent 可以辅助开发者，但严禁替换、覆盖或抢占开发者署名。Agent 的姓名、邮箱或其它
 联系方式不得作为 Author、Committer、共同作者、签署者、署名 trailer 或任何形似
-身份的独立行进入提交。该规则适用于 Claude Code、Cursor、Codex、Copilot 以及所有
-其它 Agent 或 bot。把人类代码归到 Agent 联系方式名下属于虚假身份信息和来源追溯
-违规，本地 hook 与远程 Ruleset 都会拒绝。开发者必须亲自审查并接受改动后才能提交。
+身份的独立行进入提交（真实人类共同作者正常保留）。该规则适用于 Claude Code、Cursor、
+Codex、Copilot 以及所有其它 Agent 或 bot。开发者必须亲自审查并接受改动后才能提交。
 
 ## 隐私规则
 

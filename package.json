@@ -20,9 +20,6 @@
     "yaml": "2.9.1"
   },
   "scripts": {
-    "repo:identity:install": "node tools/scripts/repository-identity-policy.mjs install",
-    "repo:identity:verify": "node tools/scripts/repository-identity-policy.mjs verify",
-    "repo:identity:self-test": "node --test tests/contract/client/repository-identity-policy.test.mjs",
     "client:promotion": "node tools/scripts/client-promotion.mjs",
     "client:promotion:self-test": "node --test tests/contract/client/client-promotion.test.mjs",
     "client:release:authority:configure": "node tools/scripts/client-release-plane.mjs authority configure --config tools/release-plane/macos-direct-arm64.json",

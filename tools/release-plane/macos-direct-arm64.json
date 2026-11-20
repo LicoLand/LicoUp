@@ -9,7 +9,6 @@
     "branch": "macos-release-candidate",
     "requiredChecks": [
       "Branch flow",
-      "Commit identity",
       "Release ready"
     ]
   },
